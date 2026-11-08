@@ -90,3 +90,29 @@ test('mods des replays lazer : réglages retirés, LZ masqué', async () => {
   assert.deepEqual(modList('HDHRMR0'), ['HD', 'HR', 'MR']);
   assert.deepEqual(modList('HDDT'), ['HD', 'DT']);
 });
+
+test('montage : moments forts sans chevauchement, fin de map, clip vertical', async () => {
+  const { findMoments, toVideoTime, clipArgs } = await import('./clips.mjs');
+  // 120 s de map : passage calme, puis un stream dense sans faute entre 60 et 75 s, des miss vers 30 s
+  const hits = []; let nm = 0;
+  for (let t = 0; t <= 120000; t += 250) { if (t >= 60000 && t < 75000) { hits.push({ t, c: 0, pp: t / 1000, nm }); hits.push({ t: t + 80, c: 0, pp: t / 1000, nm }); } else { if (t > 30000 && t < 33000 && t % 1000 === 0) nm++; hits.push({ t, c: 0, pp: t / 1000, nm }); } }
+  const m = findMoments(hits);
+  assert(m.length >= 2 && m.length <= 5);
+  for (let i = 1; i < m.length; i++) assert(m[i].start >= m[i - 1].end, 'pas de chevauchement');
+  assert(m.some(x => x.start >= 55000 && x.start <= 65000 && /sans faute/.test(x.label)), 'le stream est trouvé');
+  assert(m.some(x => x.label === 'Fin de la map') || m.at(-1).end === 120080);
+  assert.equal(toVideoTime(5000, [0, 1000, 2000, 3000, 4000, 5000, 6000], { fps: 1, intro: 3 }), 8);
+  const a = clipArgs({ input: 'in.mp4', output: 'out.mp4', start: 10, end: 25, layout: 'zoom', encoder: 'hevc_nvenc' });
+  assert.deepEqual(a.slice(a.indexOf('-ss'), a.indexOf('-ss') + 4), ['-ss', '10.000', '-t', '15.000']);
+  assert(a.includes('h264_nvenc') && a.join(' ').includes('crop=iw*0.62:ih') && a.join(' ').includes('fps=60'));
+});
+
+test('clip vertical avec cartes : intro + fin, son décalé, deux calques flous', async () => {
+  const { clipArgs, CARD_IN, CARD_OUT, drawClipCard } = await import('./clips.mjs');
+  const a = clipArgs({ input: 'in.mp4', output: 'o.mp4', start: 5, end: 13, cards: { intro: 'i.rgba', outro: 'o.rgba' } }), s = a.join(' ');
+  assert(s.includes('-itsoffset ' + CARD_IN.toFixed(3)) && s.includes('-map 3:a?'));
+  assert(s.includes('-t ' + (CARD_IN + 8 + CARD_OUT).toFixed(3)));
+  assert(s.includes('[b1]') && s.includes('[b2]') && !s.includes('enable='));
+  const c = createCanvas(1080, 1920), g = c.getContext('2d');
+  for (const k of ['intro', 'outro']) drawClipCard(g, k, { title: 'T', artist: 'A', version: 'V', stars: 6, grade: 'S', score: 1e6, acc: 99 });
+});

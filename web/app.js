@@ -206,26 +206,36 @@ let placeScene;
 const RES = [['1280x720', '720p'], ['1920x1080', '1080p'], ['2560x1440', '1440p'], ['3840x2160', '4K']];
 const ENC = [['libx264', 'H.264 · CPU (x264)'], ['h264_nvenc', 'H.264 · NVIDIA'], ['hevc_nvenc', 'H.265 · NVIDIA'], ['av1_nvenc', 'AV1 · NVIDIA'], ['h264_amf', 'H.264 · AMD'], ['hevc_amf', 'H.265 · AMD'], ['h264_qsv', 'H.264 · Intel'], ['hevc_qsv', 'H.265 · Intel'], ['libx265', 'H.265 · CPU (x265)'], ['libsvtav1', 'AV1 · CPU']];
 const pct = v => Math.round(v * 100) + '%';
+// Flou de mouvement : chaque préréglage vise une durée de flou (ms), pas un nombre d'images. danser mélange BlendFrames images
+// rendues à FPS × Oversample : à 240 i/s, 12 images ×8 ne floutent que 6 ms (invisible). On recalcule BlendFrames depuis le FPS.
 const BLUR = [
-  { k: 'off', l: 'Aucun', s: 'net', set: { Enabled: false }, dots: [0] },
-  { k: 'light', l: 'Léger', s: '×4', set: { Enabled: true, OversampleMultiplier: 4, BlendFrames: 6 }, dots: [0, 7] },
-  { k: 'bal', l: 'Équilibré', s: '×8', set: { Enabled: true, OversampleMultiplier: 8, BlendFrames: 12 }, dots: [0, 7, 14] },
-  { k: 'cine', l: 'Cinéma', s: '×14', set: { Enabled: true, OversampleMultiplier: 14, BlendFrames: 22 }, dots: [0, 6, 12, 18] },
+  { k: 'off', l: 'Aucun', s: 'net', dots: [0] },
+  { k: 'light', l: 'Léger', s: '8 ms', o: 6, ms: 8, gw: 1.5, dots: [0, 7] },
+  { k: 'bal', l: 'Équilibré', s: '16 ms', o: 8, ms: 16, gw: 2, dots: [0, 7, 14] },
+  { k: 'intense', l: 'Intense', s: '28 ms', o: 10, ms: 28, gw: 3, dots: [0, 6, 12, 18] },
+  { k: 'extreme', l: 'Extrême', s: '45 ms', o: 12, ms: 45, gw: 4, dots: [0, 5, 10, 15, 20] },
 ];
-function blurPreset() { const mb = dGet(P('Recording.MotionBlur')); if (!mb?.Enabled) return 'off'; const o = mb.OversampleMultiplier; return o <= 5 ? 'light' : o <= 10 ? 'bal' : 'cine'; }
+const blurWindow = mb => mb?.Enabled ? mb.BlendFrames / ((dGet(P('Recording.FPS')) || 60) * (mb.OversampleMultiplier || 1)) * 1000 : 0;
+function blurPreset() { const mb = dGet(P('Recording.MotionBlur')); if (!mb?.Enabled) return 'off'; const w = blurWindow(mb); return BLUR.slice(1).reduce((a, b) => Math.abs(b.ms - w) < Math.abs(a.ms - w) ? b : a).k; }
+function applyBlur(k) {
+  const b = BLUR.find(x => x.k === k), mb = dGet(P('Recording.MotionBlur')) || {};
+  if (!b?.ms) return dSet(P('Recording.MotionBlur'), { ...mb, Enabled: false });
+  const fps = dGet(P('Recording.FPS')) || 60, frames = Math.max(b.o, Math.min(512, Math.round(b.ms / 1000 * fps * b.o)));
+  dSet(P('Recording.MotionBlur'), { ...mb, Enabled: true, OversampleMultiplier: b.o, BlendFrames: frames, GaussWeightsMult: b.gw });
+}
 
 function paneRender() {
   const r = S.app.render, rs = k => (v, live) => { r[k] = v; if (!live) save(true); };
   const fps = dGet(P('Recording.FPS')), blur = blurPreset();
-  const presets = el('div', { class: 'presets' }, BLUR.map(b => el('button', { class: 'preset' + (b.k === blur ? ' on' : ''), onclick: () => { dSet(P('Recording.MotionBlur'), { ...dGet(P('Recording.MotionBlur')), ...b.set }); paneRender(); } },
+  const presets = el('div', { class: 'presets' }, BLUR.map(b => el('button', { class: 'preset' + (b.k === blur ? ' on' : ''), onclick: () => { applyBlur(b.k); paneRender(); } },
     el('div', { class: 'vis' }, b.dots.map((d, i) => el('i', { style: `left:${d + 4}px;opacity:${(i + 1) / b.dots.length};filter:blur(${b.dots.length > 1 ? 0.6 : 0}px)` }))), el('b', {}, b.l), el('small', {}, b.s))));
   const blurInfo = blur === 'off' ? hint('Image nette. L’overlay reste toujours net.')
-    : fps > 60 ? hint(`À ${fps} i/s avec flou, le rendu est ${Math.round(fps / 60)}× plus long qu’en 60, pour un résultat presque identique.`, true, el('button', { class: 'btn ghost sm', onclick: () => { dSet(P('Recording.FPS'), 60); paneRender(); } }, 'Passer à 60 FPS'))
-      : hint(`${BLUR.find(b => b.k === blur).s.slice(1)} images fusionnées par image finale.`);
+    : fps > 60 ? hint(`À ${fps} i/s avec flou, le rendu est ${Math.round(fps / 60)}× plus long qu’en 60, pour un résultat presque identique.`, true, el('button', { class: 'btn ghost sm', onclick: () => { const k = blurPreset(); dSet(P('Recording.FPS'), 60); if (k !== 'off') applyBlur(k); paneRender(); } }, 'Passer à 60 FPS'))
+      : hint(`Flou sur ${Math.round(blurWindow(dGet(P('Recording.MotionBlur'))))} ms : ${dGet(P('Recording.MotionBlur')).BlendFrames} images fusionnées par image finale.`);
   $('#t-render').replaceChildren(
     grp('Image',
       segField('Résolution', RES, () => `${dGet(P('Recording.FrameWidth'))}x${dGet(P('Recording.FrameHeight'))}`, v => { const [w, h] = v.split('x').map(Number); dSet(P('Recording.FrameWidth'), w); dSet(P('Recording.FrameHeight'), h); }),
-      segField('Images par seconde', [[30, '30'], [60, '60'], [120, '120'], [240, '240']], () => fps, v => { dSet(P('Recording.FPS'), +v); paneRender(); }),
+      segField('Images par seconde', [[30, '30'], [60, '60'], [120, '120'], [240, '240']], () => fps, v => { const k = blurPreset(); dSet(P('Recording.FPS'), +v); if (k !== 'off') applyBlur(k); paneRender(); }),
       select('Encodeur', ENC, () => dGet(P('Recording.Encoder')), v => dSet(P('Recording.Encoder'), v)),
       range('Qualité finale', { min: 10, max: 34, fmt: v => v <= 15 ? `${v} · excellente` : v <= 22 ? `${v} · élevée` : v <= 28 ? `${v} · moyenne` : `${v} · légère` }, () => r.finalQuality, rs('finalQuality'))),
     grp('Flou de mouvement', presets, blurInfo),
@@ -326,7 +336,10 @@ function paneScenes() {
       el('button', { class: 'btn ghost sm', onclick: () => setScene('intro') }, icon('play'), 'Voir l’intro')),
     grp('Fin', el('p', {}, 'Écran de résultats animé : rang, score, statistiques et classement de la map.'),
       sw('Activer la fin', () => sc.outro, set('outro'), 'Remplace l’écran de résultats de danser'),
-      segField('Style', [['lens', 'Loupe'], ['classic', 'Classique']], () => sc.outroStyle || 'lens', v => { set('outroStyle')(v); setScene('outro'); }),
+      el('div', { class: 'lab' }, 'Style de la fin'),
+      el('div', { class: 'presetgrid endpick' }, [['lens', 'Loupe', 'Note dans un cercle en verre, classement de la map', 'img/fin-loupe.jpg'], ['classic', 'Classique', 'Frappes, carte de précision, statistiques', 'img/fin-classique.jpg']].map(([v, name, desc, img]) =>
+        el('button', { class: 'pcard' + ((sc.outroStyle || 'lens') === v ? ' on' : ''), title: desc, onclick: e => { set('outroStyle')(v); e.currentTarget.parentElement.querySelectorAll('.pcard').forEach(c => c.classList.toggle('on', c === e.currentTarget)); setScene('outro'); } },
+          el('img', { class: 'pthumb', src: img, alt: '' }), el('span', { class: 'pname' }, el('b', {}, name)), el('small', { class: 'pdesc' }, desc)))),
       range('Durée', { min: 4, max: 15, step: 0.5, fmt: v => v + ' s' }, () => sc.outroDur, set('outroDur')),
       el('button', { class: 'btn ghost sm', onclick: () => setScene('outro') }, icon('play'), 'Voir la fin')),
     grp('Musique', sw('Musique de la map pendant l’intro et la fin', () => sc.music, set('music'), 'Démarre au point d’extrait de la map, avec fondus'),
@@ -340,7 +353,7 @@ function paneMore() {
   const mods = JSON.stringify(S.app.danser).match(/:/g)?.length || 0;
   const url = el('div', { class: 'tosu-url', hidden: true });
   $('#t-more').replaceChildren(
-    accountBlock(), boardBlock(),
+    montageBlock(), accountBlock(), boardBlock(),
     grp('danser', el('p', {}, 'Toutes les options de danser, exactement comme dans son interface.'), el('button', { class: 'btn ghost', onclick: openDrawer }, icon('sliders'), 'Tous les réglages danser', mods ? el('span', { class: 'chip', style: 'margin-left:4px' }, `${mods} modifiés`) : null)),
     grp('Overlay en direct (tosu)', el('p', {}, 'Le même overlay en jeu ou dans OBS. tosu, fourni avec Dancing!, démarre tout seul avec tes réglages actuels.'),
       el('button', { class: 'btn ghost', onclick: async () => { try { const r = await api('/api/tosu', {}); url.hidden = false; url.textContent = r.url; toast('Installé dans tosu'); } catch (e) { toast(e.message, true); } } }, icon('radio'), 'Démarrer l’overlay en direct'), url),
@@ -422,7 +435,57 @@ async function upload(file) {
 const size = b => b > 1e9 ? (b / 1e9).toFixed(2) + ' Go' : (b / 1e6).toFixed(0) + ' Mo';
 function videoList() {
   $('#videoCount').textContent = S.videos.length || '';
-  $('#videoList').replaceChildren(...(S.videos.length ? S.videos.map((v, i) => el('div', { class: 'vid', style: `--i:${i}` }, el('video', { src: '/videos/' + encodeURIComponent(v.name), controls: true, preload: 'none' }), el('div', {}, el('b', { title: v.name }, v.name), el('small', {}, size(v.size)), el('button', { class: 'link', onclick: () => api('/api/reveal', { name: v.name }) }, 'Afficher')))) : [el('div', { class: 'empty' }, 'Tes vidéos rendues apparaîtront ici.')]));
+  $('#videoList').replaceChildren(...(S.videos.length ? S.videos.map((v, i) => el('div', { class: 'vid', style: `--i:${i}` }, el('video', { src: '/videos/' + encodeURIComponent(v.name), controls: true, preload: 'none' }), el('div', {}, el('b', { title: v.name }, v.name), el('small', {}, size(v.size)), el('button', { class: 'link', onclick: () => api('/api/reveal', { name: v.name }) }, 'Afficher'), v.name.includes('(TikTok ') ? null : el('button', { class: 'link', onclick: () => openEditor(v.name) }, 'Montage')))) : [el('div', { class: 'empty' }, 'Tes vidéos rendues apparaîtront ici.')]));
+}
+
+// ---------- montage léger : un passage de la vidéo, recadré en vertical pour TikTok ----------
+function montageBlock() {
+  const vids = S.videos.filter(v => !v.name.includes('(TikTok ') && !v.name.includes('(aperçu)'));
+  return grp('Montage', el('p', {}, 'Coupe un moment fort de ta vidéo et exporte-le en vertical (1080×1920) pour TikTok, Shorts ou Reels.'),
+    vids.length ? el('button', { class: 'btn primary sm', onclick: () => openEditor(vids[0].name) }, icon('film'), 'Monter la dernière vidéo') : el('p', { class: 'muted' }, 'Exporte d’abord une vidéo.'),
+    vids.length > 1 ? el('p', { class: 'muted', style: 'font-size:12px' }, 'Pour une autre vidéo : onglet Vidéos, bouton « Montage ».') : null);
+}
+async function openEditor(name) {
+  const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+  const video = el('video', { src: '/videos/' + encodeURIComponent(name), controls: true, preload: 'metadata', class: 'ed-video' });
+  const track = el('div', { class: 'ed-track' }), range = el('div', { class: 'ed-range' }), head = el('i', { class: 'ed-head' }); track.append(range, head);
+  const list = el('div', { class: 'ed-moments' }), info = el('span', { class: 'muted' });
+  let start = 0, end = 0, layout = 'zoom', cards = true;
+  const draw = () => {
+    const d = video.duration || 1; end = Math.min(end || d, d);
+    range.style.left = start / d * 100 + '%'; range.style.width = Math.max(0, end - start) / d * 100 + '%';
+    info.textContent = `${fmt(start)} → ${fmt(end)} · ${(end - start).toFixed(1)} s`;
+  };
+  const pick = (s, e) => { start = Math.max(0, s); end = e; video.currentTime = start; draw(); };
+  video.addEventListener('loadedmetadata', () => { if (!end) pick(Math.max(0, video.duration - 15), video.duration); });
+  video.addEventListener('timeupdate', () => { head.style.left = video.currentTime / (video.duration || 1) * 100 + '%'; if (!video.paused && video.currentTime >= end) video.pause(); });
+  track.addEventListener('click', e => { const r = track.getBoundingClientRect(); video.currentTime = (e.clientX - r.left) / r.width * (video.duration || 0); });
+  const { moments = [], info: cardInfo = null } = await api('/api/moments?name=' + encodeURIComponent(name)).catch(() => ({}));
+  const showMoments = () => {
+    const d = video.duration || 1;
+    track.querySelectorAll('.ed-mark').forEach(m => m.remove());
+    for (const m of moments) track.append(el('b', { class: 'ed-mark', title: m.label, style: `left:${m.start / d * 100}%;width:${(m.end - m.start) / d * 100}%` }));
+    list.replaceChildren(...(moments.length ? moments.map(m => el('button', { class: 'pick', onclick: () => pick(m.start, m.end) }, el('b', {}, m.label), ` ${fmt(m.start)}`))
+      : [el('span', { class: 'muted' }, 'Pas de moments détectés pour cette vidéo (exportée avant la 3.1). Choisis le passage à la main.')]));
+  };
+  // la vidéo a pu charger pendant la lecture des moments : on dessine tout de suite dans ce cas
+  const ready = () => { showMoments(); if (moments.length) pick(moments[0].start, moments[0].end); };
+  if (video.readyState >= 1) ready(); else video.addEventListener('loadedmetadata', ready);
+  const layoutSeg = segField('Cadrage', [['zoom', 'Zoom sur le jeu'], ['full', 'Plein cadre']], () => layout, v => { layout = v; });
+  const go = el('button', { class: 'btn primary', onclick: async () => {
+    go.disabled = true; go.textContent = 'Export en cours…';
+    try { const r = await api('/api/clip', { name, start, end, layout, cards }); toast('Clip exporté : ' + r.name); S.videos = await api('/api/videos'); videoList(); $('#modal').hidden = true; }
+    catch (e) { toast(e.message, true); } finally { go.disabled = false; go.textContent = 'Exporter le clip vertical'; }
+  } }, 'Exporter le clip vertical');
+  modal('Montage · ' + name.replace(/\.mp4$/i, ''), el('div', { class: 'editor' },
+    video, track,
+    el('div', { class: 'ed-row' }, info,
+      el('button', { class: 'btn ghost sm', onclick: () => { start = video.currentTime; if (end <= start) end = Math.min(video.duration, start + 15); draw(); } }, 'Début ici'),
+      el('button', { class: 'btn ghost sm', onclick: () => { end = video.currentTime; if (end <= start) start = Math.max(0, end - 15); draw(); } }, 'Fin ici'),
+      el('button', { class: 'btn ghost sm', onclick: () => { video.currentTime = start; video.play(); } }, icon('play'), 'Lire le passage')),
+    el('div', { class: 'lab' }, 'Moments forts'), list, layoutSeg,
+    cardInfo ? sw('Intro et fin animées', () => cards, v => { cards = v; }, 'Carte de la map en ouverture, carte du score à la fin, sur fond flouté') : el('p', { class: 'muted', style: 'font-size:12px' }, 'Intro et fin animées : disponibles pour les vidéos exportées à partir de la 3.1.'),
+    go));
 }
 
 // ---------- job ----------
@@ -964,6 +1027,8 @@ function boardBlock() {
     el('button', { class: 'icon-btn', onclick: () => { b.custom.splice(i, 1); save(true); drawRows(); rebuildTimeline(); } }, icon('x')))));
   drawRows();
   return grp('Classement personnalisé',
+    segField('Serveur du classement', [['osu', 'osu!'], ['akatsuki', 'Akatsuki'], ['gatari', 'Gatari']], () => b.source || 'osu', v => { b.source = v; save(true); }),
+    el('p', { class: 'muted', style: 'font-size:12px;margin:-4px 0 0' }, 'Akatsuki : classement Relax ou Autopilot choisi tout seul selon les mods du replay. Appliqué à l’export vidéo.'),
     range('Nombre de scores en ligne', { min: 5, max: 50 }, () => b.limit || 50, (v, l) => { b.limit = v; if (!l) { save(true); rebuildTimeline(); } }),
     text('Joueurs à masquer (séparés par des virgules)', () => (b.exclude || []).join(', '), v => { b.exclude = v.split(',').map(x => x.trim()).filter(Boolean); save(true); rebuildTimeline(); }, 'ex. joueur1, joueur2'),
     el('div', { class: 'field' }, el('div', { class: 'lab' }, 'Joueurs ajoutés à la main (amis, rivaux…)'), rows),

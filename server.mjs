@@ -12,6 +12,9 @@ import { demoData } from './web/demo-data.js';
 import { BUILTIN, dancingPresets } from './web/presets.js';
 import { maniaData } from './mania.mjs';
 import { DatabaseSync } from 'node:sqlite';
+import { clipArgs, drawClipCard } from './clips.mjs';
+import { createCanvas } from '@napi-rs/canvas';
+import os from 'node:os';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const runtime = path.join(root, 'runtime');
@@ -186,6 +189,25 @@ async function osuToken() {
   const r = await fetch('https://osu.ppy.sh/oauth/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: Number(c.ClientId), client_secret: c.ClientSecret, grant_type: 'client_credentials', scope: 'public' }), signal: AbortSignal.timeout(8000) });
   if (!r.ok) return null; const j = await r.json(); apiToken = { v: j.access_token, exp: Date.now() + (j.expires_in - 60) * 1000 }; return apiToken.v;
 }
+// Classements des serveurs privés, API publiques sans clé. Akatsuki : relax=1 (RX) / 2 (AP) / 0 selon les mods du replay.
+const PRIVATE_UA = { 'user-agent': 'Dancing! (osu! replay renderer; github.com/Underspace1/Dancing)' };
+async function privateBoard(source, beatmapId, mods = []) {
+  if (!beatmapId) throw Error('map sans identifiant');
+  const get = async url => { const r = await fetch(url, { headers: PRIVATE_UA, signal: AbortSignal.timeout(10000) }); if (!r.ok) throw Error('HTTP ' + r.status); return r.json(); };
+  const bits = m => modString(m);
+  if (source === 'akatsuki') {
+    const relax = mods.includes('RX') ? 1 : mods.includes('AP') ? 2 : 0;
+    const j = await get(`https://akatsuki.gg/api/v1/scores?b=${beatmapId}&relax=${relax}&l=50`);
+    return (j.scores || []).map(s => ({ name: s.user?.username || '?', id: s.user?.id || 0, avatar: s.user?.id ? `https://a.akatsuki.gg/${s.user.id}` : '', country: s.user?.country || '',
+      score: s.score, combo: s.max_combo, acc: s.accuracy, pp: s.pp || null, rank: s.rank, misses: s.count_miss, mods: bits(s.mods) }));
+  }
+  if (source === 'gatari') {
+    const j = await get(`https://api.gatari.pw/beatmap/${beatmapId}/scores?mode=0&sort=pp&l=50`);
+    return (j.data || []).map(s => ({ name: s.username || '?', id: s.userid || 0, avatar: s.userid ? `https://a.gatari.pw/${s.userid}` : '', country: s.country || '',
+      score: s.score, combo: s.max_combo, acc: s.accuracy, pp: s.pp || null, rank: s.rank, misses: s.count_miss, mods: bits(s.mods) }));
+  }
+  throw Error('serveur inconnu');
+}
 async function lookupUser(name) {
   try {
     const t = await osuToken(); if (!t) return null;
@@ -313,6 +335,15 @@ async function startRender({ replay, mode }) {
         if (notFound) throw Error("danser ne trouve toujours pas la map de ce replay (voir le journal).");
       }
       if (!fs.existsSync(exportFile) || !fs.existsSync(master)) throw Error("danser n'a pas produit la vidéo ou l'export HUD (voir le journal).");
+      const source = app.board?.source || 'osu';
+      if (source !== 'osu') {
+        const d = readJSON(exportFile);
+        try {
+          const board = await privateBoard(source, d.meta.beatmapId, info.mods);
+          d.board = board; await fsp.writeFile(exportFile, JSON.stringify(d));
+          logLine(`Classement ${source === 'akatsuki' ? 'Akatsuki' : 'Gatari'} : ${board.length} scores.`);
+        } catch (e) { logLine(`Classement ${source} indisponible (${e.message}) : classement osu! gardé.`); }
+      }
       job.stage = 'overlay'; job.progress = 0; job.eta = null;
       const user = await lookupUser(info.player) || {};
       const rec = profile.Recording, hud = { ...app.hud, outroStyle: app.scenes?.outroStyle };
@@ -440,6 +471,24 @@ http.createServer(async (req, res) => {
       if (p === '/api/settings') { if (job?.running) throw Error('Attends la fin du rendu.'); app = deepMerge(structuredClone(defaultsApp), input); await saveApp(); return send(res, 200, { ok: true }); }
       if (p === '/api/render') { await startRender(input); return send(res, 202, { ok: true }); }
       if (p === '/api/cancel') { if (job?.running) { job.cancelled = true; kill(job.proc); } return send(res, 200, { ok: true }); }
+      if (p === '/api/clip') {
+        // Montage : un passage de la vidéo exporté en vertical (TikTok) dans le dossier des vidéos.
+        const src = inside(app.paths.output, input.name || ''); if (!src || !fs.existsSync(src)) throw Error('Vidéo introuvable.');
+        const start = +input.start, end = +input.end; if (!(end > start)) throw Error('Choisis un début avant la fin.');
+        const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(11, 19), outName = path.basename(src, path.extname(src)).slice(0, 80) + ' (TikTok ' + stamp + ').mp4';
+        const enc = app.danser?.Recording?.Encoder || danserBase().Recording?.Encoder || 'libx264';
+        // cartes d'intro et de fin (infos de la map et du score enregistrées avec la vidéo au rendu)
+        const info = input.cards === false ? null : readJSON(src + '.moments.json')?.info;
+        let cards = null, tmp = null;
+        if (info) {
+          tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dancing-clip-')); cards = { intro: path.join(tmp, 'intro.rgba'), outro: path.join(tmp, 'outro.rgba') };
+          const c = createCanvas(1080, 1920), g = c.getContext('2d');
+          for (const k of ['intro', 'outro']) { drawClipCard(g, k, info); fs.writeFileSync(cards[k], Buffer.from(g.getImageData(0, 0, 1080, 1920).data.buffer)); }
+        }
+        try { await new Promise((ok, ko) => execFile(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards }), { windowsHide: true, timeout: 600000, maxBuffer: 1 << 24 }, (e, o, er) => e ? ko(Error('ffmpeg : ' + String(er).trim().split(/\r?\n/).slice(-2).join(' '))) : ok())); }
+        finally { if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); }
+        return send(res, 200, { ok: true, name: outName, cards: !!cards });
+      }
       if (p === '/api/reveal') { const f = inside(app.paths.output, input.name || '.'); execFile('explorer', f && fs.existsSync(f) && input.name ? ['/select,', f] : [app.paths.output]); return send(res, 200, { ok: true }); }
       if (p === '/api/tosu') { const url = installTosu(); startTosu(); return send(res, 200, { url }); }
       if (p === '/api/quit') { send(res, 200, { ok: true }); if (job?.running) { job.cancelled = true; kill(job.proc); } setTimeout(() => process.exit(0), 300); return; }
@@ -451,6 +500,7 @@ http.createServer(async (req, res) => {
     if (p === '/api/mania/bg') { const m = await maniaFor(url.searchParams.get('replay')); return m.meta.bg ? serveFile(req, res, path.join(m.meta.dir, m.meta.bg)) : send(res, 404, {}); }
     if (p === '/api/job') return send(res, 200, job ? { ...job, proc: undefined } : null);
     if (p === '/api/videos') return send(res, 200, await listVideos());
+    if (p === '/api/moments') { const f = inside(app.paths.output, url.searchParams.get('name') || ''); return send(res, 200, (f && readJSON(f + '.moments.json')) || { moments: [] }); }
     if (p === '/api/native/library') return send(res, 200, { presets: [...BUILTIN, ...dancingPresets()] });
     if (p === '/api/native/preview') {
       let position = Math.min(1, Math.max(0, Number(url.searchParams.get('position')) || 0));

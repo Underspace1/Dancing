@@ -12,6 +12,7 @@ import { createCanvas, loadImage, GlobalFonts, ImageData } from '@napi-rs/canvas
 import { HUD, Timeline, W, H, modList } from './web/hud.js';
 import { drawIntro, drawOutro, prepareBackdrop } from './web/scenes.js';
 import { tosuMessages } from './web/tosu-emu.js';
+import { findMoments, toVideoTime } from './clips.mjs';
 import { dancingWidget, drawDancingWidgets } from './web/dancing-widgets.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -304,6 +305,17 @@ async function main() {
   const code = await closed;
   glass.cleanup();
   if (code !== 0) { log({ error: 'ffmpeg: ' + err.trim() }); process.exit(1); }
+  // Moments forts pour l'éditeur de montage, en secondes dans la vidéo finale (à côté du fichier).
+  try {
+    const tv = ms => toVideoTime(ms, frames, { oversample: m, fps: job.fps, intro: I });
+    const f0 = frames[0], f1 = frames[frames.length - 1], sm = tl.summary();
+    // seulement les moments filmés (un aperçu ne couvre que 12 s de la map)
+    const moments = findMoments(data.hits || []).filter(x => x.start >= f0 && x.end <= f1 + 50).map(x => ({ start: +tv(x.start).toFixed(2), end: +tv(x.end).toFixed(2), label: x.label }));
+    // infos de la map et du score pour les cartes d'intro et de fin des clips verticaux
+    const info = { title: meta.title, artist: meta.artist, version: meta.version, creator: meta.creator, stars: meta.stars, cs: meta.cs, ar: meta.ar, od: meta.od, hp: meta.hp, bpm: tl.at(meta.start).bpm,
+      player: meta.player, mods: modList(meta.mods), score: sm.score, acc: sm.acc, pp: sm.pp, grade: sm.grade, combo: sm.maxCombo, maxCombo: meta.maxCombo, miss: sm.nmiss, n100: sm.n100, n50: sm.n50, rank: sm.of > 1 ? sm.rank : null, of: sm.of };
+    fs.writeFileSync(job.out + '.moments.json', JSON.stringify({ moments, info }));
+  } catch { }
   log({ done: true, file: job.out, seconds: (Date.now() - t0) / 1000 });
 }
 
