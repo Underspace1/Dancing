@@ -1,6 +1,14 @@
 // Site Dancing! : apparitions au défilement, capture inclinée qui se redresse, bandeaux liés à la vitesse de défilement.
 const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// Boutons « Télécharger » : lien direct vers l'installateur de la dernière release GitHub et numéro de version.
+// Sans réponse de GitHub, ils mènent à la page de la release, où le fichier est en un clic.
+fetch('https://api.github.com/repos/Underspace1/Dancing/releases/latest').then(r => r.ok ? r.json() : null).then(rel => {
+  const exe = rel?.assets?.find(a => /setup.*\.exe$/i.test(a.name)); if (!exe) return;
+  document.querySelectorAll('[data-dl]').forEach(a => { a.href = exe.browser_download_url; });
+  document.querySelectorAll('[data-ver]').forEach(s => { s.textContent = `${rel.tag_name} · ${Math.round(exe.size / 1048576)} Mo · `; });
+}).catch(() => {});
+
 // Apparitions (titres qui montent ligne par ligne, textes qui glissent)
 const targets = document.querySelectorAll('.reveal, .big, .section-title, .mega, .hero-title');
 if (calm || !('IntersectionObserver' in window)) targets.forEach(el => el.classList.add('in'));
