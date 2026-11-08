@@ -12,7 +12,7 @@ import { demoData } from './web/demo-data.js';
 import { BUILTIN, dancingPresets } from './web/presets.js';
 import { maniaData } from './mania.mjs';
 import { DatabaseSync } from 'node:sqlite';
-import { clipArgs, drawClipCard, drawClipBackground } from './clips.mjs';
+import { clipArgs, drawClipCard, drawClipBackground, drawClipCaption, CARD_IN, CARD_OUT } from './clips.mjs';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import os from 'node:os';
 
@@ -172,7 +172,7 @@ async function listVideos() {
 }
 
 // ---------- osu! API (player avatar / ranks) using danser's own credentials ----------
-let apiToken = null;
+let apiToken = null, clipJob = null;
 // Sans clé configurée, on remplit credentials.json avec l'application osu! livrée avec Dancing! (assets/osu-client.json) :
 // danser affiche alors le classement global de la map. Une clé entrée par l'utilisateur n'est jamais remplacée.
 function ensureOsuClient() {
@@ -472,22 +472,32 @@ http.createServer(async (req, res) => {
       if (p === '/api/render') { await startRender(input); return send(res, 202, { ok: true }); }
       if (p === '/api/cancel') { if (job?.running) { job.cancelled = true; kill(job.proc); } return send(res, 200, { ok: true }); }
       if (p === '/api/clip') {
-        // Montage : un passage de la vidéo exporté en vertical (TikTok) dans le dossier des vidéos.
+        // Montage : un passage exporté en vertical (TikTok), en tâche de fond ; l'avancement se lit sur /api/clip-job.
+        if (clipJob?.running) throw Error('Un clip est déjà en cours d’export.');
         const src = inside(app.paths.output, input.name || ''); if (!src || !fs.existsSync(src)) throw Error('Vidéo introuvable.');
         const start = +input.start, end = +input.end; if (!(end > start)) throw Error('Choisis un début avant la fin.');
         const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(11, 19), outName = path.basename(src, path.extname(src)).slice(0, 80) + ' (TikTok ' + stamp + ').mp4';
         const enc = app.danser?.Recording?.Encoder || danserBase().Recording?.Encoder || 'libx264';
-        // cartes d'intro et de fin (infos de la map et du score enregistrées avec la vidéo au rendu)
+        // cartes d'intro et de fin, fond de la map, légende : images RGBA brutes dessinées ici (le ffmpeg fourni ne lit pas les PNG)
         const info = readJSON(src + '.moments.json')?.info;
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dancing-clip-')), c = createCanvas(1080, 1920), g = c.getContext('2d');
         const dump = name => { const f = path.join(tmp, name); fs.writeFileSync(f, Buffer.from(g.getImageData(0, 0, 1080, 1920).data.buffer)); return f; };
-        let cards = null, background = null;
+        let cards = null, background = null, caption = null;
         if (info && input.cards !== false) cards = Object.fromEntries(['intro', 'outro'].map(k => { drawClipCard(g, k, info); return [k, dump(k + '.rgba')]; }));
-        // fond = image de la map floutée (sinon la vidéo floutée, pour les vidéos d'avant la 3.1.1)
         if (input.bg !== 'video' && info?.bg && fs.existsSync(info.bg)) { try { drawClipBackground(g, await loadImage(info.bg)); background = dump('bg.rgba'); } catch { } }
-        try { await new Promise((ok, ko) => execFile(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards, background, overlay: input.overlay !== false }), { windowsHide: true, timeout: 600000, maxBuffer: 1 << 24 }, (e, o, er) => e ? ko(Error('ffmpeg : ' + String(er).trim().split(/\r?\n/).slice(-2).join(' '))) : ok())); }
-        finally { fs.rmSync(tmp, { recursive: true, force: true }); }
-        return send(res, 200, { ok: true, name: outName, cards: !!cards, background: !!background });
+        const text = String(input.caption || '').trim().slice(0, 90);
+        if (text) { drawClipCaption(g, text); caption = dump('caption.rgba'); }
+        const args = clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards, background, caption, overlay: input.overlay !== false });
+        const total = (end - start) + (cards ? CARD_IN + CARD_OUT : 0);
+        clipJob = { running: true, progress: 0, name: outName, error: null, started: Date.now() };
+        const pr = spawn(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), args, { windowsHide: true }); let err = '';
+        pr.stderr.on('data', d => {
+          err = (err + d).slice(-4000);
+          // images encodées / images attendues (60 i/s) : « time= » reste bloqué tant que le son décalé n'arrive pas
+          const fr = String(d).match(/frame=\s*(\d+)/g); if (fr) clipJob.progress = Math.min(0.99, +fr.at(-1).replace(/\D/g, '') / (total * 60));
+        });
+        pr.on('close', code => { fs.rmSync(tmp, { recursive: true, force: true }); Object.assign(clipJob, { running: false, progress: 1, error: code ? 'ffmpeg : ' + err.trim().split(/\r?\n/).slice(-2).join(' ') : null }); });
+        return send(res, 202, { ok: true, name: outName });
       }
       if (p === '/api/reveal') { const f = inside(app.paths.output, input.name || '.'); execFile('explorer', f && fs.existsSync(f) && input.name ? ['/select,', f] : [app.paths.output]); return send(res, 200, { ok: true }); }
       if (p === '/api/tosu') { const url = installTosu(); startTosu(); return send(res, 200, { url }); }
@@ -500,6 +510,8 @@ http.createServer(async (req, res) => {
     if (p === '/api/mania/bg') { const m = await maniaFor(url.searchParams.get('replay')); return m.meta.bg ? serveFile(req, res, path.join(m.meta.dir, m.meta.bg)) : send(res, 404, {}); }
     if (p === '/api/job') return send(res, 200, job ? { ...job, proc: undefined } : null);
     if (p === '/api/videos') return send(res, 200, await listVideos());
+    if (p === '/api/clip-job') return send(res, 200, clipJob);
+    if (p === '/api/clip-bg') { const f = inside(app.paths.output, url.searchParams.get('name') || ''), bg = f && readJSON(f + '.moments.json')?.info?.bg; return bg && fs.existsSync(bg) ? serveFile(req, res, bg) : send(res, 404, { error: 'Pas de fond' }); }
     if (p === '/api/moments') { const f = inside(app.paths.output, url.searchParams.get('name') || ''); return send(res, 200, (f && readJSON(f + '.moments.json')) || { moments: [] }); }
     if (p === '/api/native/library') return send(res, 200, { presets: [...BUILTIN, ...dancingPresets()] });
     if (p === '/api/native/preview') {

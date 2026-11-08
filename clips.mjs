@@ -47,7 +47,7 @@ export function toVideoTime(mapMs, frames, { oversample = 1, fps = 60, intro = 0
 // à la place de la vidéo floutée.
 export const CARD_IN = 2.6, CARD_OUT = 2.8;
 const PLAYFIELD = 'crop=iw*0.5885:ih*0.7593:iw*0.2214:ih*0.1296';
-export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null, overlay = true, background = null }) {
+export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null, overlay = true, background = null, caption = null }) {
   const dur = Math.max(0.5, end - start), f = n => n.toFixed(3);
   const I = cards ? CARD_IN : 0, O = cards ? CARD_OUT : 0, T = I + dur + O;
   const fg = !overlay ? `${PLAYFIELD},scale=1080:-2` : layout === 'zoom' ? 'crop=iw*0.62:ih,scale=1080:-2' : 'scale=1080:-2';
@@ -61,13 +61,16 @@ export function clipArgs({ input, output, start, end, layout = 'full', encoder =
     ? `[${bgIdx}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(T)},format=gbrp[bg];[0:v]fps=60,${fg}${pad},pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,format=gbrp[fg];[bg][fg]blend=all_mode=lighten:shortest=1,format=yuv420p,setsar=1`
     : `[0:v]fps=60,split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2[bg];[b]${fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1${pad}`;
   const enc = /nvenc/.test(encoder) ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20', '-b:v', '0'] : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];
-  const src = ['-ss', start.toFixed(3), '-t', dur.toFixed(3)], bgIn = background ? raw(background) : [];
-  if (!cards) return ['-hide_banner', '-y', ...src, '-i', input, ...bgIn, '-filter_complex', `${vert},format=yuv420p[v]`, '-map', '[v]', '-map', '0:a?', ...enc, '-c:a', 'copy', '-movflags', '+faststart', output];
+  const src = ['-ss', start.toFixed(3), '-t', dur.toFixed(3)], bgIn = background ? raw(background) : [], capIn = caption ? raw(caption) : [];
+  // légende : visible pendant le jeu seulement (pas sur les cartes), entrée placée après le fond
+  const capIdx = (cards ? 4 : 1) + (background ? 1 : 0);
+  const withCap = out => caption ? `${vert}[pre];[${capIdx}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(dur)},format=rgba,fade=t=in:st=0:d=0.4:alpha=1,setpts=PTS+${f(I)}/TB[cap];[pre][cap]overlay=eof_action=pass${out}` : `${vert}${out}`;
+  if (!cards) return ['-hide_banner', '-y', ...src, '-i', input, ...bgIn, ...capIn, '-filter_complex', withCap(',format=yuv420p[v]'), '-map', '[v]', '-map', '0:a?', ...enc, '-c:a', 'copy', '-movflags', '+faststart', output];
   const card = (k, d) => `[${k}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(d)},format=rgba`;
   const filter = [
-    `${vert}[base]`,
+    withCap('[base]'),
     // deux calques flous, seulement sur l'intro et la fin (un seul fondu par calque : un fondu « in » rend le calque transparent avant son début)
-    `[base]split=3[sharp][s1][s2];[s1]trim=end=${f(I)},boxblur=luma_radius=30:luma_power=3:chroma_radius=15:alpha_radius=0,format=yuva420p,fade=t=out:st=${f(I - 0.5)}:d=0.5:alpha=1[b1];[s2]trim=start=${f(I + dur)},boxblur=luma_radius=30:luma_power=3:chroma_radius=15:alpha_radius=0,format=yuva420p,fade=t=in:st=${f(I + dur)}:d=0.5:alpha=1[b2]`,
+    `[base]split=3[sharp][s1][s2];[s1]trim=end=${f(I)},scale=270:480,boxblur=8:2,scale=1080:1920,format=yuva420p,fade=t=out:st=${f(I - 0.5)}:d=0.5:alpha=1[b1];[s2]trim=start=${f(I + dur)},scale=270:480,boxblur=8:2,scale=1080:1920,format=yuva420p,fade=t=in:st=${f(I + dur)}:d=0.5:alpha=1[b2]`,
     `[sharp][b1]overlay=eof_action=pass[x1];[x1][b2]overlay=eof_action=pass[mix]`,
     `${card(1, I)},fade=t=in:st=0.2:d=0.5:alpha=1,fade=t=out:st=${f(I - 0.5)}:d=0.45:alpha=1[ci]`,
     `${card(2, O)},fade=t=in:st=0.35:d=0.5:alpha=1,setpts=PTS+${f(I + dur)}/TB[co]`,
@@ -75,7 +78,7 @@ export function clipArgs({ input, output, start, end, layout = 'full', encoder =
     `[m1][co]overlay=eof_action=pass[m2]`,
     `[m2]fade=t=in:st=0:d=0.7,fade=t=out:st=${f(T - 0.8)}:d=0.8,format=yuv420p[v]`,
   ].join(';');
-  return ['-hide_banner', '-y', ...src, '-i', input, ...raw(cards.intro), ...raw(cards.outro), ...src, '-itsoffset', f(I), '-i', input, ...bgIn,
+  return ['-hide_banner', '-y', ...src, '-i', input, ...raw(cards.intro), ...raw(cards.outro), ...src, '-itsoffset', f(I), '-i', input, ...bgIn, ...capIn,
     '-filter_complex', filter, '-map', '[v]', '-map', '3:a?', '-t', f(T), ...enc, '-c:a', 'copy', '-movflags', '+faststart', output];
 }
 
@@ -129,3 +132,29 @@ export function drawClipBackground(g, img, { blur = 26, dim = 0.38 } = {}) {
   if (img) { const s = Math.max(W / img.width, H / img.height) * 1.08; g.filter = `blur(${blur}px)`; g.drawImage(img, (W - img.width * s) / 2, (H - img.height * s) / 2, img.width * s, img.height * s); g.filter = 'none'; }
   g.fillStyle = `rgba(0,0,0,${dim})`; g.fillRect(0, 0, W, H);
 }
+
+// Légende des clips : texte en haut de l'écran, dans une pastille en verre (une ou deux lignes).
+export function drawClipCaption(g, text) {
+  const W = 1080, F = px => `800 ${px}px "Nunito", "Segoe UI", sans-serif`;
+  g.clearRect(0, 0, W, 1920);
+  let px = 66; g.font = F(px);
+  const words = String(text).split(/\s+/).filter(Boolean);
+  let lines = wrap(g, words, 900);
+  // on réduit la taille jusqu'à tenir sur deux lignes
+  while ((lines.length > 2 || lines.some(l => g.measureText(l).width > 900)) && px > 34) { px -= 4; g.font = F(px); lines = wrap(g, words, 900); }
+  lines = lines.slice(0, 2);
+  // « ★ » n'existe pas dans Nunito : les étoiles sont dessinées à la main entre les morceaux de texte
+  const sw = px * 0.9, lineW = l => l.split(/[★☆]/).reduce((a, t) => a + g.measureText(t).width, 0) + (l.split(/[★☆]/).length - 1) * sw;
+  const lh = px * 1.22, h = lines.length * lh + 56, w = Math.min(980, Math.max(...lines.map(lineW)) + 80), x = (W - w) / 2, y = 250;
+  g.save(); g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowBlur = 40; g.beginPath(); g.roundRect(x, y, w, h, 36); g.fillStyle = 'rgba(14,14,20,.5)'; g.fill(); g.restore();
+  g.beginPath(); g.roundRect(x, y, w, h, 36); g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.22)'; g.stroke();
+  g.textAlign = 'left'; g.fillStyle = '#fff';
+  lines.forEach((l, i) => {
+    const by = y + 28 + px * 0.95 + i * lh; let cx = (W - lineW(l)) / 2;
+    l.split(/[★☆]/).forEach((t, k, parts) => {
+      g.fillText(t, cx, by); cx += g.measureText(t).width;
+      if (k < parts.length - 1) { const sx = cx + sw / 2, sy = by - px * 0.36, R = px * 0.4; g.beginPath(); for (let n = 0; n < 10; n++) { const a = -Math.PI / 2 + n * Math.PI / 5, d = n % 2 ? R * 0.45 : R; g.lineTo(sx + Math.cos(a) * d, sy + Math.sin(a) * d); } g.closePath(); g.fill(); cx += sw; }
+    });
+  });
+}
+function wrap(g, words, max) { const out = []; for (const w of words) { const cur = out.at(-1); if (cur && g.measureText(cur + ' ' + w).width <= max) out[out.length - 1] = cur + ' ' + w; else out.push(w); } return out; }

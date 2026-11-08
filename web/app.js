@@ -13,6 +13,7 @@ const S = { token: '', app: null, danserDefaults: {}, skins: [], replays: [], vi
 
 // ---------- icons ----------
 const ICONS = {
+  scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>',
   play: '<polygon points="6 4 20 12 6 20 6 4"/>', pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
   eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>', power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>', search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
@@ -84,7 +85,7 @@ function text(label, get, set, ph = '') { return el('div', { class: 'field' }, e
 function num(label, get, set, hint) { return el('div', { class: 'field' }, el('div', { class: 'lab' }, label), el('input', { type: 'number', min: 0, value: get(), onchange: e => set(+e.target.value) }), hint ? el('small', {}, hint) : null); }
 function swatch(get, set, title) { const i = el('input', { type: 'color', value: get(), oninput: e => set(e.target.value) }); return el('label', { class: 'swatch', title }, i); }
 function colorRow(label, get, set) { return el('div', { class: 'field row' }, el('div', { class: 'lab', style: 'color:var(--tx)' }, label), swatch(get, set, label)); }
-const GRP_OPEN = ['Presets', 'Personnaliser', 'Widgets', 'Overlay osu!mania', 'Réglages mania', 'Image', 'Intro', 'Fin', 'Compte osu!'];
+const GRP_OPEN = ['Montage', 'Mes clips', 'Presets', 'Personnaliser', 'Widgets', 'Overlay osu!mania', 'Réglages mania', 'Image', 'Intro', 'Fin', 'Compte osu!'];
 let grpState = {}; try { grpState = JSON.parse(localStorage.getItem('rh.grp') || '{}'); } catch { }
 const grp = (title, ...kids) => {
   const key = String(title).replace(/s*«.*$/, '').trim(), open = grpState[key] ?? GRP_OPEN.includes(key);
@@ -353,7 +354,7 @@ function paneMore() {
   const mods = JSON.stringify(S.app.danser).match(/:/g)?.length || 0;
   const url = el('div', { class: 'tosu-url', hidden: true });
   $('#t-more').replaceChildren(
-    montageBlock(), accountBlock(), boardBlock(),
+    accountBlock(), boardBlock(),
     grp('danser', el('p', {}, 'Toutes les options de danser, exactement comme dans son interface.'), el('button', { class: 'btn ghost', onclick: openDrawer }, icon('sliders'), 'Tous les réglages danser', mods ? el('span', { class: 'chip', style: 'margin-left:4px' }, `${mods} modifiés`) : null)),
     grp('Overlay en direct (tosu)', el('p', {}, 'Le même overlay en jeu ou dans OBS. tosu, fourni avec Dancing!, démarre tout seul avec tes réglages actuels.'),
       el('button', { class: 'btn ghost', onclick: async () => { try { const r = await api('/api/tosu', {}); url.hidden = false; url.textContent = r.url; toast('Installé dans tosu'); } catch (e) { toast(e.message, true); } } }, icon('radio'), 'Démarrer l’overlay en direct'), url),
@@ -434,63 +435,150 @@ async function upload(file) {
 }
 const size = b => b > 1e9 ? (b / 1e9).toFixed(2) + ' Go' : (b / 1e6).toFixed(0) + ' Mo';
 function videoList() {
+  paneMontage();
   $('#videoCount').textContent = S.videos.length || '';
   $('#videoList').replaceChildren(...(S.videos.length ? S.videos.map((v, i) => el('div', { class: 'vid', style: `--i:${i}` }, el('video', { src: '/videos/' + encodeURIComponent(v.name), controls: true, preload: 'none' }), el('div', {}, el('b', { title: v.name }, v.name), el('small', {}, size(v.size)), el('button', { class: 'link', onclick: () => api('/api/reveal', { name: v.name }) }, 'Afficher'), v.name.includes('(TikTok ') ? null : el('button', { class: 'link', onclick: () => openEditor(v.name) }, 'Montage')))) : [el('div', { class: 'empty' }, 'Tes vidéos rendues apparaîtront ici.')]));
 }
 
-// ---------- montage léger : un passage de la vidéo, recadré en vertical pour TikTok ----------
-function montageBlock() {
-  const vids = S.videos.filter(v => !v.name.includes('(TikTok ') && !v.name.includes('(aperçu)'));
-  return grp('Montage', el('p', {}, 'Coupe un moment fort de ta vidéo et exporte-le en vertical (1080×1920) pour TikTok, Shorts ou Reels.'),
-    vids.length ? el('button', { class: 'btn primary sm', onclick: () => openEditor(vids[0].name) }, icon('film'), 'Monter la dernière vidéo') : el('p', { class: 'muted' }, 'Exporte d’abord une vidéo.'),
-    vids.length > 1 ? el('p', { class: 'muted', style: 'font-size:12px' }, 'Pour une autre vidéo : onglet Vidéos, bouton « Montage ».') : null);
+// ---------- montage : onglet dédié + éditeur plein écran (clips verticaux pour TikTok, Shorts, Reels) ----------
+// Une vidéo HEVC 240 i/s occupe un décodeur matériel : tout lecteur fermé est vidé (src retiré), sinon les suivants restent noirs.
+const releaseVideos = root => root?.querySelectorAll('video').forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
+function paneMontage() {
+  if (!$('#t-montage')) return;
+  const vids = S.videos.filter(v => !v.name.includes('(TikTok ')), clips = S.videos.filter(v => v.name.includes('(TikTok '));
+  const label = n => n.replace(/\.mp4$/i, '');
+  $('#t-montage').replaceChildren(
+    grp('Montage', el('p', {}, 'Choisis une vidéo exportée : Dancing! repère ses moments forts et en fait un clip vertical 1080×1920 pour TikTok, Shorts ou Reels.'),
+      vids.length ? el('div', { class: 'mlist' }, vids.map(v => el('button', { class: 'mitem', onclick: () => openEditor(v.name) },
+        icon('scissors'), el('span', { class: 'mtxt' }, el('b', {}, label(v.name)), el('small', {}, size(v.size))), el('span', { class: 'chip' }, 'Monter'))))
+        : el('p', { class: 'muted' }, 'Exporte d’abord une vidéo avec « Exporter la vidéo ».')),
+    grp('Mes clips', clips.length ? el('div', { class: 'mlist' }, clips.map(v => el('div', { class: 'mitem' },
+      icon('film'), el('span', { class: 'mtxt' }, el('b', {}, label(v.name)), el('small', {}, size(v.size))),
+      el('button', { class: 'link', onclick: () => playClip(v.name) }, 'Lire'), el('button', { class: 'link', onclick: () => api('/api/reveal', { name: v.name }) }, 'Afficher'))))
+      : el('p', { class: 'muted' }, 'Tes clips verticaux apparaîtront ici.')));
+}
+function playClip(name) {
+  modal(name.replace(/\.mp4$/i, ''), el('video', { class: 'clip-player', src: '/videos/' + encodeURIComponent(name), controls: true, autoplay: true }));
+}
+
+let edState = null;
+function closeEditor() {
+  const e = edState; if (!e) return; edState = null;
+  cancelAnimationFrame(e.raf); clearTimeout(e.poll); removeEventListener('keydown', e.keys);
+  releaseVideos($('#editor')); $('#editor').hidden = true; $('#editor').replaceChildren();
+  videoList();   // lecteurs de la liste recréés (vidés à l'ouverture de l'éditeur)
 }
 async function openEditor(name) {
-  const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
-  const video = el('video', { src: '/videos/' + encodeURIComponent(name), controls: true, preload: 'metadata', class: 'ed-video' });
-  const track = el('div', { class: 'ed-track' }), range = el('div', { class: 'ed-range' }), head = el('i', { class: 'ed-head' }); track.append(range, head);
-  const list = el('div', { class: 'ed-moments' }), info = el('span', { class: 'muted' });
-  // réglages des clips gardés d'une fois sur l'autre
-  const C = S.app.clip ||= { layout: 'zoom', cards: true, overlay: false, bg: 'map' }, keep = () => save(true);
-  let start = 0, end = 0;
-  const draw = () => {
-    const d = video.duration || 1; end = Math.min(end || d, d);
-    range.style.left = start / d * 100 + '%'; range.style.width = Math.max(0, end - start) / d * 100 + '%';
-    info.textContent = `${fmt(start)} → ${fmt(end)} · ${(end - start).toFixed(1)} s`;
-  };
-  const pick = (s, e) => { start = Math.max(0, s); end = e; video.currentTime = start; draw(); };
-  video.addEventListener('loadedmetadata', () => { if (!end) pick(Math.max(0, video.duration - 15), video.duration); });
-  video.addEventListener('timeupdate', () => { head.style.left = video.currentTime / (video.duration || 1) * 100 + '%'; if (!video.paused && video.currentTime >= end) video.pause(); });
-  track.addEventListener('click', e => { const r = track.getBoundingClientRect(); video.currentTime = (e.clientX - r.left) / r.width * (video.duration || 0); });
+  closeEditor(); $('#modal').hidden = true; releaseVideos($('#mBody')); releaseVideos($('#videoList'));
+  const C = S.app.clip ||= { layout: 'zoom', cards: true, overlay: false, bg: 'map' }; C.caption ??= '';
+  const keep = () => save(true);
   const { moments = [], info: cardInfo = null } = await api('/api/moments?name=' + encodeURIComponent(name)).catch(() => ({}));
-  const showMoments = () => {
-    const d = video.duration || 1;
-    track.querySelectorAll('.ed-mark').forEach(m => m.remove());
-    for (const m of moments) track.append(el('b', { class: 'ed-mark', title: m.label, style: `left:${m.start / d * 100}%;width:${(m.end - m.start) / d * 100}%` }));
-    list.replaceChildren(...(moments.length ? moments.map(m => el('button', { class: 'pick', onclick: () => pick(m.start, m.end) }, el('b', {}, m.label), ` ${fmt(m.start)}`))
-      : [el('span', { class: 'muted' }, 'Pas de moments détectés pour cette vidéo (exportée avant la 3.1). Choisis le passage à la main.')]));
+  const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+  const st = edState = { raf: 0, poll: 0, start: 0, end: 0, keys: null };
+  const video = el('video', { class: 'ed-video', src: '/videos/' + encodeURIComponent(name), preload: 'auto', playsinline: true });
+  const bgImg = cardInfo?.bg ? Object.assign(new Image(), { src: '/api/clip-bg?name=' + encodeURIComponent(name) }) : null;
+  const dur = () => video.duration || 1, pct = t => t / dur() * 100 + '%';
+
+  // ligne de temps : passage choisi, poignées de début/fin à faire glisser, moments forts, tête de lecture
+  const track = el('div', { class: 'ed-track' }), range = el('div', { class: 'ed-range' }), hs = el('i', { class: 'ed-handle', title: 'Début' }), he = el('i', { class: 'ed-handle', title: 'Fin' }), head = el('i', { class: 'ed-head' });
+  track.append(range, hs, he, head);
+  const time = el('span', { class: 'ed-time' });
+  const draw = () => { range.style.left = pct(st.start); range.style.width = (st.end - st.start) / dur() * 100 + '%'; hs.style.left = pct(st.start); he.style.left = pct(st.end); time.textContent = `${fmt(st.start)} → ${fmt(st.end)} · ${(st.end - st.start).toFixed(1)} s`; };
+  const setRange = (s, e) => { st.start = Math.max(0, Math.min(s, dur() - 0.5)); st.end = Math.min(dur(), Math.max(e, st.start + 0.5)); draw(); };
+  const tAt = ev => { const r = track.getBoundingClientRect(); return Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * dur(); };
+  const drag = which => ev => {
+    ev.preventDefault(); ev.stopPropagation(); video.pause();
+    const move = m => { const t = tAt(m); if (which === 's') { setRange(t, st.end); video.currentTime = st.start; } else { setRange(st.start, t); video.currentTime = st.end; } };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
   };
-  // la vidéo a pu charger pendant la lecture des moments : on dessine tout de suite dans ce cas
-  const ready = () => { showMoments(); if (moments.length) pick(moments[0].start, moments[0].end); };
-  if (video.readyState >= 1) ready(); else video.addEventListener('loadedmetadata', ready);
+  hs.addEventListener('pointerdown', drag('s')); he.addEventListener('pointerdown', drag('e'));
+  track.addEventListener('pointerdown', ev => { video.currentTime = tAt(ev); });
+
+  const playLabel = el('span', {}, 'Lire le passage'), playIco = el('span', {}, icon('play'));
+  const toggle = () => { if (video.paused) { if (video.currentTime < st.start || video.currentTime >= st.end - 0.05) video.currentTime = st.start; video.play(); } else video.pause(); };
+  const playBtn = el('button', { class: 'btn primary sm', onclick: toggle }, playIco, playLabel);
+  video.addEventListener('play', () => { playIco.replaceChildren(icon('pause')); playLabel.textContent = 'Pause'; });
+  video.addEventListener('pause', () => { playIco.replaceChildren(icon('play')); playLabel.textContent = 'Lire le passage'; });
+  video.addEventListener('click', toggle);
+  const inBtn = el('button', { class: 'btn ghost sm', title: 'Raccourci : I', onclick: () => setRange(video.currentTime, Math.max(st.end, video.currentTime + 1)) }, 'Début ici');
+  const outBtn = el('button', { class: 'btn ghost sm', title: 'Raccourci : O', onclick: () => setRange(Math.min(st.start, video.currentTime - 1), video.currentTime) }, 'Fin ici');
+  const durRow = el('div', { class: 'ed-row' }, el('span', { class: 'lab' }, 'Durée'), ...[10, 15, 20, 30, 60].map(s => el('button', { class: 'pick', onclick: () => setRange(st.start, st.start + s) }, s + ' s')));
+
+  const list = el('div', { class: 'ed-moments' });
+  const showMoments = () => {
+    track.querySelectorAll('.ed-mark').forEach(m => m.remove());
+    for (const m of moments) track.insertBefore(el('b', { class: 'ed-mark', title: m.label, style: `left:${pct(m.start)};width:${(m.end - m.start) / dur() * 100}%` }), range);
+    list.replaceChildren(...(moments.length ? moments.map(m => el('button', { class: 'pick', onclick: () => { setRange(m.start, m.end); video.currentTime = m.start; } }, el('b', {}, fmt(m.start)), ' ', m.label))
+      : [el('span', { class: 'muted' }, 'Pas de moments détectés (vidéo exportée avant la 3.1) : choisis le passage avec les poignées.')]));
+  };
+
+  // aperçu téléphone : le rendu final dessiné en direct (fond, recadrage, fusion, légende)
+  const phone = el('canvas', { class: 'ed-phone', width: 360, height: 640 }), pg = phone.getContext('2d');
+  const cover = img => { const iw = img.videoWidth || img.naturalWidth, ih = img.videoHeight || img.naturalHeight, s = Math.max(360 / iw, 640 / ih) * 1.08; pg.drawImage(img, (360 - iw * s) / 2, (640 - ih * s) / 2, iw * s, ih * s); };
+  const renderPhone = () => {
+    const vw = video.videoWidth, vh = video.videoHeight; pg.globalCompositeOperation = 'source-over'; pg.filter = 'none'; pg.fillStyle = '#0b0b0e'; pg.fillRect(0, 0, 360, 640);
+    if (!vw) return;
+    const useMap = C.bg === 'map' && bgImg?.complete && bgImg.naturalWidth;
+    pg.filter = 'blur(9px)'; cover(useMap ? bgImg : video); pg.filter = 'none';
+    if (useMap) { pg.fillStyle = 'rgba(0,0,0,.38)'; pg.fillRect(0, 0, 360, 640); }
+    const crop = !C.overlay ? [0.2214, 0.1296, 0.5885, 0.7593] : C.layout === 'zoom' ? [0.19, 0, 0.62, 1] : [0, 0, 1, 1];
+    const [cx, cy, cw, ch] = [crop[0] * vw, crop[1] * vh, crop[2] * vw, crop[3] * vh], dh = 360 * ch / cw;
+    pg.globalCompositeOperation = useMap ? 'lighten' : 'source-over'; pg.drawImage(video, cx, cy, cw, ch, 0, (640 - dh) / 2, 360, dh); pg.globalCompositeOperation = 'source-over';
+    const cap = (C.caption || '').trim();
+    if (cap) { pg.font = '800 22px Nunito, sans-serif'; const w = Math.min(330, pg.measureText(cap).width + 30); pg.fillStyle = 'rgba(14,14,20,.55)'; pg.beginPath(); pg.roundRect((360 - w) / 2, 80, w, 40, 13); pg.fill(); pg.fillStyle = '#fff'; pg.textAlign = 'center'; pg.fillText(cap.length > 32 ? cap.slice(0, 31) + '…' : cap, 180, 107); }
+  };
+  const loop = () => { st.raf = requestAnimationFrame(loop); head.style.left = pct(video.currentTime); if (!video.paused && video.currentTime >= st.end) { video.pause(); video.currentTime = st.end; } renderPhone(); };
+
+  // réglages
   const layoutSeg = segField('Cadrage avec overlay', [['zoom', 'Zoom sur le jeu'], ['full', 'Plein cadre']], () => C.layout, v => { C.layout = v; keep(); });
   layoutSeg.hidden = !C.overlay;
-  const overlaySw = sw('Afficher l’overlay', () => C.overlay, v => { C.overlay = v; layoutSeg.hidden = !v; keep(); }, 'Désactivé : recadré sur le terrain de jeu, sans bandeau, classement ni barres');
-  const bgSeg = cardInfo?.bg ? segField('Fond', [['map', 'Fond de la map'], ['video', 'Vidéo floutée']], () => C.bg, v => { C.bg = v; keep(); }) : null;
-  const go = el('button', { class: 'btn primary', onclick: async () => {
-    go.disabled = true; go.textContent = 'Export en cours…';
-    try { const r = await api('/api/clip', { name, start, end, layout: C.layout, cards: C.cards, overlay: C.overlay, bg: C.bg }); toast('Clip exporté : ' + r.name); S.videos = await api('/api/videos'); videoList(); $('#modal').hidden = true; }
-    catch (e) { toast(e.message, true); } finally { go.disabled = false; go.textContent = 'Exporter le clip vertical'; }
+  const settings = el('div', { class: 'ed-settings' },
+    bgImg ? segField('Fond', [['map', 'Fond de la map'], ['video', 'Vidéo floutée']], () => C.bg, v => { C.bg = v; keep(); }) : null,
+    sw('Afficher l’overlay', () => C.overlay, v => { C.overlay = v; layoutSeg.hidden = !v; keep(); }, 'Désactivé : recadré sur le terrain de jeu'),
+    layoutSeg,
+    cardInfo ? sw('Intro et fin animées', () => C.cards, v => { C.cards = v; keep(); }, 'Carte de la map au début, carte du score à la fin') : el('p', { class: 'muted', style: 'font-size:12px' }, 'Intro et fin animées : pour les vidéos exportées à partir de la 3.1.'),
+    el('div', { class: 'field' }, el('div', { class: 'lab' }, 'Légende en haut du clip'), el('input', { value: C.caption, maxlength: 90, placeholder: 'ex. FC 7★ en HDDT', oninput: e => { C.caption = e.target.value; }, onchange: keep })));
+
+  // export en tâche de fond avec progression
+  const bar = el('div', { class: 'ed-bar', hidden: true }, el('i')), result = el('div', { class: 'ed-result' });
+  const go = el('button', { class: 'btn primary ed-go', onclick: async () => {
+    video.pause(); go.disabled = true; result.replaceChildren(); bar.hidden = false; bar.firstChild.style.width = '0%';
+    try {
+      await api('/api/clip', { name, start: st.start, end: st.end, layout: C.layout, cards: C.cards, overlay: C.overlay, bg: C.bg, caption: C.caption });
+      const tick = async () => {
+        const j = await api('/api/clip-job').catch(() => null); if (!j || edState !== st) return;
+        const p = Math.round(j.progress * 100); bar.classList.toggle('wait', j.running && !p); bar.firstChild.style.width = p + '%';
+        go.textContent = !j.running ? 'Exporter le clip vertical' : p ? `Export… ${p} %` : 'Préparation de l’intro…';
+        if (j.running) { st.poll = setTimeout(tick, 400); return; }
+        go.disabled = false; bar.hidden = true;
+        if (j.error) return toast(j.error, true);
+        S.videos = await api('/api/videos').catch(() => S.videos); videoList();
+        result.replaceChildren(el('b', {}, 'Clip prêt'), el('span', { class: 'muted' }, j.name),
+          el('div', { class: 'ed-row' }, el('button', { class: 'btn ghost sm', onclick: () => { closeEditor(); playClip(j.name); } }, icon('play'), 'Lire'), el('button', { class: 'btn ghost sm', onclick: () => api('/api/reveal', { name: j.name }) }, icon('folder'), 'Afficher')));
+      };
+      tick();
+    } catch (e) { toast(e.message, true); go.disabled = false; bar.hidden = true; }
   } }, 'Exporter le clip vertical');
-  modal('Montage · ' + name.replace(/\.mp4$/i, ''), el('div', { class: 'editor' },
-    video, track,
-    el('div', { class: 'ed-row' }, info,
-      el('button', { class: 'btn ghost sm', onclick: () => { start = video.currentTime; if (end <= start) end = Math.min(video.duration, start + 15); draw(); } }, 'Début ici'),
-      el('button', { class: 'btn ghost sm', onclick: () => { end = video.currentTime; if (end <= start) start = Math.max(0, end - 15); draw(); } }, 'Fin ici'),
-      el('button', { class: 'btn ghost sm', onclick: () => { video.currentTime = start; video.play(); } }, icon('play'), 'Lire le passage')),
-    el('div', { class: 'lab' }, 'Moments forts'), list, bgSeg, overlaySw, layoutSeg,
-    cardInfo ? sw('Intro et fin animées', () => C.cards, v => { C.cards = v; keep(); }, 'Carte de la map en ouverture, carte du score à la fin, sur fond flouté') : el('p', { class: 'muted', style: 'font-size:12px' }, 'Intro et fin animées : disponibles pour les vidéos exportées à partir de la 3.1.'),
-    go));
+
+  $('#editor').replaceChildren(el('div', { class: 'ed-panel' },
+    el('header', {}, el('div', {}, el('h2', {}, 'Montage'), el('small', { class: 'muted' }, name.replace(/\.mp4$/i, ''))),
+      el('span', { class: 'muted ed-keys' }, 'Espace : lire · I / O : début / fin · Échap : fermer'), el('button', { class: 'icon-btn', title: 'Fermer', onclick: closeEditor }, icon('x'))),
+    el('div', { class: 'ed-grid' },
+      el('div', { class: 'ed-main' }, video, track, el('div', { class: 'ed-row' }, time, playBtn, inBtn, outBtn), durRow, el('div', { class: 'lab' }, 'Moments forts'), list),
+      el('div', { class: 'ed-side' }, phone, settings, go, bar, result))));
+  $('#editor').hidden = false;
+
+  st.keys = e => {
+    if (edState !== st || e.target?.matches?.('input, textarea, select')) return;
+    if (e.key === 'Escape') closeEditor();
+    else if (e.key === ' ') { e.preventDefault(); toggle(); }
+    else if (e.key.toLowerCase() === 'i') inBtn.click();
+    else if (e.key.toLowerCase() === 'o') outBtn.click();
+  };
+  addEventListener('keydown', st.keys);
+  const ready = () => { if (edState !== st) return; showMoments(); if (moments.length) setRange(moments[0].start, moments[0].end); else setRange(Math.max(0, dur() - 15), dur()); video.currentTime = st.start; st.raf = requestAnimationFrame(loop); };
+  if (video.readyState >= 1) ready(); else video.addEventListener('loadedmetadata', ready, { once: true });
 }
 
 // ---------- job ----------
@@ -536,7 +624,7 @@ async function boot() {
   await Promise.all(['600', '700', '800'].map(w => document.fonts.load(`${w} 24px Nunito`))).catch(() => {});
   P_.canvas = $('#preview'); P_.g = P_.canvas.getContext('2d'); backdropGame = makeGameBackdrop(); P_.canvasEvents();
   const st = await refresh();
-  paneRender(); paneSkin(); paneOverlay(); paneColors(); paneScenes(); paneMore();
+  paneRender(); paneSkin(); paneOverlay(); paneColors(); paneScenes(); paneMore(); paneMontage();
   if (!S.app.setupComplete) openSetup();
   const sel = S.replays.find(r => r.id === localStorage.getItem('rh.sel')) || S.replays[0]; if (sel) select_(sel);
   await loadAssets(); requestAnimationFrame(frame);
@@ -824,8 +912,8 @@ function syncTosu(st, meta) {
 new ResizeObserver(() => layoutTosu()).observe(document.getElementById('screen'));
 
 // ---- catalogue
-function modal(title, body) { $('#mTitle').textContent = title; $('#mBody').replaceChildren(body); $('#modal').hidden = false; }
-$$('[data-mclose]').forEach(b => b.addEventListener('click', () => $('#modal').hidden = true));
+function modal(title, body) { releaseVideos($('#mBody')); $('#mTitle').textContent = title; $('#mBody').replaceChildren(body); $('#modal').hidden = false; }
+$$('[data-mclose]').forEach(b => b.addEventListener('click', () => { $('#modal').hidden = true; releaseVideos($('#mBody')); }));
 async function openCatalog(view = 'store') {
   if (!S.app) return;
   if (!S.store) await loadStore();

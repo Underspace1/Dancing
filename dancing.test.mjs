@@ -124,3 +124,12 @@ test('clip vertical : fond de la map fusionné, overlay masqué, prolongé pour 
   assert(s.includes('-framerate 60') && s.includes('trim=duration=13.400') && s.includes(',tpad='));
   const c = createCanvas(1080, 1920); drawClipBackground(c.getContext('2d'), null);
 });
+
+test('clip vertical : légende pendant le jeu seulement, étoile dessinée', async () => {
+  const { clipArgs, drawClipCaption } = await import('./clips.mjs');
+  const s = clipArgs({ input: 'in.mp4', output: 'o.mp4', start: 0, end: 10, caption: 'c.rgba', background: 'bg.rgba', cards: { intro: 'i', outro: 'o' } }).join(' ');
+  assert(s.includes('[5:v]loop') && s.includes('setpts=PTS+2.600/TB[cap]') && s.includes('[pre][cap]overlay'));
+  const n = clipArgs({ input: 'in.mp4', output: 'o.mp4', start: 0, end: 10, caption: 'c.rgba' }).join(' ');
+  assert(n.includes('[1:v]loop') && n.includes('setpts=PTS+0.000/TB[cap]'));
+  const c = createCanvas(1080, 1920); drawClipCaption(c.getContext('2d'), 'FC 7★ en HDDT');
+});

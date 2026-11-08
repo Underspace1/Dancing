@@ -81,12 +81,14 @@
     <nav class="tabs" id="tabs">
       <button class="on" data-t="style"><i data-i="palette"></i><span>Style</span></button>
       <button data-t="video"><i data-i="film"></i><span>Vidéo</span></button>
+      <button data-t="montage"><i data-i="scissors"></i><span>Montage</span></button>
       <button data-t="more"><i data-i="sliders"></i><span>Plus</span></button>
       <span class="ink"></span>
     </nav>
     <div class="panes">
       <div class="pane on" data-panel="style"><div id="t-overlay"></div><div id="t-colors"></div></div>
       <div class="pane" data-panel="video"><div id="t-render"></div><div id="t-scenes"></div><div id="t-colors-game"></div><div id="t-skin"></div></div>
+      <div class="pane" data-panel="montage"><div id="t-montage"></div></div>
       <div class="pane" data-panel="more"><div id="t-more"></div></div>
     </div>
   </aside>
@@ -101,6 +103,7 @@
   </div>
 </div>
 <div class="modal" id="modal" hidden><div class="drawer-back" data-mclose></div><div class="modal-panel"><header><h2 id="mTitle"></h2><button class="icon-btn" data-mclose><i data-i="x"></i></button></header><div class="modal-body" id="mBody"></div></div></div>
+<div class="editor-overlay" id="editor" hidden></div>
 <dialog id="setup" aria-labelledby="setupTitle"></dialog>
 <div class="dropzone" id="dropzone"><div class="dz-ring"><i data-i="upload"></i></div><b>Dépose ton replay</b><span>fichier .osr</span></div>
 <div class="toasts" id="toasts"></div>

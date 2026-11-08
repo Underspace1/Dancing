@@ -1,1 +1,1 @@
-{"name":"replay-hud","version":"3.1.1","private":true,"type":"module","dependencies":{"@fontsource/nunito":"^5.3.0","@napi-rs/canvas":"^1.1.0"}}
+{"name":"replay-hud","version":"3.2.0","private":true,"type":"module","dependencies":{"@fontsource/nunito":"^5.3.0","@napi-rs/canvas":"^1.1.0"}}

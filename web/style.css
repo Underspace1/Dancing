@@ -98,7 +98,7 @@ select { appearance: none; cursor: pointer; background-image: url("data:image/sv
 .chip { font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px; background: #24242b; color: #cfcfd8; letter-spacing: .3px; }
 .chip.DT, .chip.NC { background: #33295f; color: #d6d0ff; } .chip.HD { background: #4d3e15; color: #ffe08a; } .chip.HR { background: #4f1f23; color: #ffb3b6; } .chip.EZ { background: #22402a; color: #b5f2bb; } .chip.RX, .chip.AP { background: #1b3a4b; color: #a7e3ff; } .chip.FL { background: #333; }
 .empty { color: var(--tx3); text-align: center; padding: 40px 10px; }
-.vid { border-radius: 11px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); animation: rise .35s var(--ease) both; animation-delay: calc(var(--i, 0) * 30ms); }
+.vid { flex-shrink: 0; border-radius: 11px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); animation: rise .35s var(--ease) both; animation-delay: calc(var(--i, 0) * 30ms); }
 .vid video { width: 100%; aspect-ratio: 16/9; background: #000; display: block; }
 .vid div { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 12px; }
 .vid b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -493,8 +493,8 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.35); box-sha
 .stat span { text-transform: none; letter-spacing: 0; font-size: 11.5px; }
 
 /* ---- Interface plus simple : 3 onglets, sections repliables */
-.tabs { grid-template-columns: repeat(3, 1fr); }
-.tabs button { flex-direction: row; justify-content: center; gap: 8px; padding: 14px 4px 13px; font-size: 13px; }
+.tabs { grid-template-columns: repeat(4, 1fr); }
+.tabs button { flex-direction: row; justify-content: center; gap: 6px; padding: 14px 2px 13px; font-size: 12.5px; }
 .grp { display: block; padding: 0; border-top: 1px solid var(--line); }
 #t-overlay > .grp:first-child, #t-render > .grp:first-child { border-top: 0; }
 .grp > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 15px 2px; font-size: 13.5px; font-weight: 800; color: var(--tx); user-select: none; transition: color .15s; }
@@ -538,3 +538,41 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.35); box-sha
 .ed-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ed-row .muted { margin-right: auto; font-variant-numeric: tabular-nums; }
 .ed-moments { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---- Montage : onglet + éditeur plein écran */
+.mlist { display: flex; flex-direction: column; gap: 6px; }
+.mitem { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg2, rgba(255,255,255,.04)); border: 1px solid rgba(255,255,255,.06); text-align: left; color: inherit; }
+button.mitem { cursor: pointer; } button.mitem:hover { border-color: var(--acc); }
+.mitem .ic { width: 18px; height: 18px; flex: none; color: var(--acc); }
+.mtxt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mtxt b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mtxt small { color: var(--tx3); font-size: 11px; }
+.clip-player { display: block; max-height: 74vh; max-width: 100%; margin: 0 auto; border-radius: 12px; background: #000; }
+.editor-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(6,6,8,.82); backdrop-filter: blur(6px); display: flex; padding: 18px; }
+.editor-overlay[hidden] { display: none !important; }
+.ed-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg1, #111114); border: 1px solid rgba(255,255,255,.08); border-radius: 16px; overflow: hidden; }
+.ed-panel > header { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.ed-panel > header h2 { margin: 0; font-size: 18px; } .ed-panel > header small { display: block; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-keys { margin-left: auto; font-size: 12px; }
+.ed-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 360px; gap: 18px; padding: 18px; overflow: auto; }
+.ed-main, .ed-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ed-video { width: 100%; max-height: 52vh; border-radius: 10px; background: #000; cursor: pointer; }
+.ed-track { position: relative; height: 34px; border-radius: 8px; background: rgba(255,255,255,.07); cursor: pointer; touch-action: none; }
+.ed-mark { position: absolute; top: 0; bottom: 0; background: rgba(255,204,34,.25); border-left: 2px solid #ffcc22; pointer-events: none; }
+.ed-range { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; background: rgba(255,102,171,.3); box-shadow: inset 0 0 0 2px var(--acc); pointer-events: none; }
+.ed-handle { position: absolute; top: -3px; bottom: -3px; width: 12px; margin-left: -6px; border-radius: 4px; background: var(--acc); cursor: ew-resize; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.ed-handle::after { content: ''; position: absolute; left: 5px; top: 30%; bottom: 30%; width: 2px; background: rgba(0,0,0,.35); }
+.ed-head { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; }
+.ed-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ed-time { margin-right: auto; font-variant-numeric: tabular-nums; color: var(--tx2); font-size: 13px; }
+.ed-moments { display: flex; flex-wrap: wrap; gap: 6px; }
+.ed-phone { width: 270px; height: 480px; align-self: center; border-radius: 22px; background: #000; box-shadow: 0 0 0 6px #1d1d22, 0 18px 40px rgba(0,0,0,.5); }
+.ed-settings { display: flex; flex-direction: column; gap: 10px; }
+.ed-go { width: 100%; justify-content: center; }
+.ed-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; } .ed-bar[hidden] { display: none; }
+.ed-bar i { display: block; height: 100%; width: 0; background: var(--acc); transition: width .3s; }
+.ed-result { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ed-result .muted { word-break: break-all; font-size: 12px; }
+@media (max-width: 900px) { .ed-grid { grid-template-columns: 1fr; } }
+.ed-bar.wait i { width: 30% !important; animation: edwait 1.1s ease-in-out infinite alternate; }
+@keyframes edwait { from { transform: translateX(-100%); } to { transform: translateX(330%); } }
