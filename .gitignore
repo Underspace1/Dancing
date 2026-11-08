@@ -24,3 +24,6 @@ pub/export/
 
 # Notes de travail internes (chemins personnels)
 HANDOFF.md
+
+# Prompt de la pub (retiré du dépôt public, gardé en local)
+pub/prompt-claude-design.md
