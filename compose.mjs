@@ -316,7 +316,10 @@ async function main() {
     // infos de la map et du score pour les cartes d'intro et de fin des clips verticaux
     const info = { bg: meta.dir && meta.bg ? path.join(meta.dir, meta.bg) : null, title: meta.title, artist: meta.artist, version: meta.version, creator: meta.creator, stars: meta.stars, cs: meta.cs, ar: meta.ar, od: meta.od, hp: meta.hp, bpm: tl.at(meta.start).bpm,
       player: meta.player, mods: modList(meta.mods), score: sm.score, acc: sm.acc, pp: sm.pp, grade: sm.grade, combo: sm.maxCombo, maxCombo: meta.maxCombo, miss: sm.nmiss, n100: sm.n100, n50: sm.n50, rank: sm.of > 1 ? sm.rank : null, of: sm.of };
-    fs.writeFileSync(job.out + '.moments.json', JSON.stringify({ moments, info }));
+    // temps de map (ms) toutes les 0,5 s de vidéo, et le replay : permet de refaire un rendu danser dédié pour un clip vertical
+    const vt = { intro: I, step: 0.5, map: [] };
+    for (let s = 0; s <= nI / fps + videoFrames / job.fps + 0.5; s += 0.5) { const k = Math.round((s - I) * job.fps); vt.map.push(k < 0 || k >= videoFrames ? null : Math.round(frames[k * m])); }
+    fs.writeFileSync(job.out + '.moments.json', JSON.stringify({ moments, info: { ...info, replay: job.replay || null }, vt }));
   } catch { }
   log({ done: true, file: job.out, seconds: (Date.now() - t0) / 1000 });
 }

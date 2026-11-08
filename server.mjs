@@ -186,6 +186,32 @@ function ensureProxy(src) {
     { windowsHide: true, timeout: 1800000, maxBuffer: 1 << 24 }, e => { proxies.delete(out); if (e) { fs.rmSync(tmp, { force: true }); return ko(Error('Aperçu impossible à préparer.')); } fs.renameSync(tmp, out); ok(out); }));
   proxies.set(out, p); return p;
 }
+// Clip vertical, rendu dédié : danser rejoue le passage en 1080x1920, avec le fond de la map moins assombri (opacity =
+// visibilité du fond, comme baisser le « background dim » d'osu!). Le temps de map vient de la table vt écrite à l'export.
+async function renderVertical({ info, vt, start, end, tmp, opacity, onProgress }) {
+  const near = s => { const i = Math.max(0, Math.min(vt.map.length - 1, Math.round(s / vt.step))); for (let d = 0; d < vt.map.length; d++) for (const j of [i - d, i + d]) if (vt.map[j] != null) return vt.map[j] + (s - j * vt.step) * 1000; return null; };
+  const m0 = near(start), m1 = near(end); if (m0 == null || m1 == null || m1 <= m0) throw Error('Passage introuvable dans le replay.');
+  const dd = danserDir(), prof = buildProfile(), rec = prof.Recording || {}, mb = rec.MotionBlur || {}, fps0 = rec.FPS || 60, op = Math.max(0.05, Math.min(0.9, opacity));
+  prof.Recording = { ...rec, FrameWidth: 1080, FrameHeight: 1920, FPS: 60, Encoder: /nvenc/.test(rec.Encoder || '') ? 'h264_nvenc' : 'libx264', OutputDir: tmp, Container: 'mp4',
+    MotionBlur: mb.Enabled ? { ...mb, BlendFrames: Math.max(mb.OversampleMultiplier || 1, Math.round((mb.BlendFrames || 1) * 60 / fps0)) } : mb };
+  const bg = prof.Playfield.Background;
+  bg.Dim = { ...bg.Dim, Normal: 1 - op, Breaks: Math.min(bg.Dim?.Breaks ?? 0.5, 1 - op) };
+  bg.Blur = { ...bg.Blur, Enabled: true, Values: { ...(bg.Blur?.Values || {}), Normal: 0.2, Breaks: 0.2 } };
+  // pas de rectangle assombri autour du terrain (Boundaries), pas d'écran de résultats
+  prof.Gameplay = { ...prof.Gameplay, ShowResultsScreen: false, Boundaries: { ...(prof.Gameplay?.Boundaries || {}), Enabled: false } };
+  // danser démarre par un fondu au noir : on rend 1,2 s plus tôt, coupées ensuite (lead)
+  const lead = Math.min(1.2, m0 / 1000);
+  fs.writeFileSync(path.join(dd, 'settings', 'replay-hud-tiktok.json'), JSON.stringify(prof, null, 2));
+  const out = 'tiktok-' + Date.now(), args = ['-settings=replay-hud-tiktok', `-replay=${info.replay}`, '-record', '-noupdatecheck', '-quickstart', `-start=${(m0 / 1000 - lead).toFixed(3)}`, `-end=${(m1 / 1000).toFixed(3)}`, `-out=${out}`];
+  let log = '';
+  await new Promise((ok, ko) => {
+    const pr = spawn(path.join(dd, 'danser-cli.exe'), args, { cwd: dd, windowsHide: true });
+    const onData = d => { const s = String(d); log = (log + s).slice(-3000); const m = s.match(/Progress: (\d+)%/g); if (m) onProgress(+m.at(-1).replace(/\D/g, '') / 100); };
+    pr.stdout.on('data', onData); pr.stderr.on('data', onData);
+    pr.on('close', code => code ? ko(Error('danser : ' + (log.match(/Beatmap not found/) ? 'map introuvable pour ce replay' : 'rendu vertical impossible'))) : ok());
+  });
+  const f = path.join(tmp, out + '.mp4'); if (!fs.existsSync(f)) throw Error('danser n’a pas produit le rendu vertical.'); return { file: f, lead };
+}
 async function listVideos() {
   const dir = app.paths.output; let names = []; try { names = await fsp.readdir(dir); } catch { }
   const out = [];
@@ -374,7 +400,7 @@ async function startRender({ replay, mode }) {
       const finalEnc = app.danser?.Recording?.Encoder || danserBase().Recording?.Encoder || 'libx264';
       const jobFile = path.join(work, name + '.job.json');
       await fsp.writeFile(jobFile, JSON.stringify({
-        export: exportFile, video: master, out, audio: audioFile, pcm: pcmFile, ffmpeg: path.join(dd, 'ffmpeg', 'ffmpeg.exe'), cache: path.join(root, 'cache'), hud,
+        export: exportFile, replay: file, video: master, out, audio: audioFile, pcm: pcmFile, ffmpeg: path.join(dd, 'ffmpeg', 'ffmpeg.exe'), cache: path.join(root, 'cache'), hud,
         size: [rec.FrameWidth, rec.FrameHeight], fps: rec.FPS, overlayFps: Math.min(rec.FPS, r.overlayFps || 60),
         oversample: rec.MotionBlur?.Enabled ? rec.MotionBlur.OversampleMultiplier : 1, encoder: finalEnc, crf: r.finalQuality,
         tosu: (app.tosu || []).map(w => ({ ...w, glass: w.glass ?? extras.metadata(w.folder).glass, glassBlur: w.glassBlur || extras.metadata(w.folder).glassBlur })), stageUrl: `http://127.0.0.1:${PORT}/stage.html`, board: app.board, playedIso: info.date, playedAt: new Date(info.date).toLocaleString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
@@ -507,19 +533,33 @@ http.createServer(async (req, res) => {
         const dump = name => { const f = path.join(tmp, name); fs.writeFileSync(f, Buffer.from(g.getImageData(0, 0, 1080, 1920).data.buffer)); return f; };
         let cards = null, background = null, frame = null, caption = null;
         if (info && input.cards !== false) cards = Object.fromEntries(['intro', 'outro'].map(k => { drawClipCard(g, k, info); return [k, dump(k + '.rgba')]; }));
-        if (input.bg !== 'video' && info?.bg && fs.existsSync(info.bg)) { try { const img = await loadImage(info.bg); drawClipBackground(g, img); background = dump('bg.rgba'); drawClipFrame(g, img, gameRect({ overlay: input.overlay !== false, layout: input.layout })); frame = dump('frame.rgba'); } catch { } }
+        // rendu vertical dédié : danser rejoue le passage en 1080x1920 avec le fond de la map moins assombri (comme le « background dim » d'osu!)
+        const vt = readJSON(src + '.moments.json')?.vt;
+        const dedicated = input.bg === 'dedicated' && info?.replay && fs.existsSync(info.replay) && vt?.map?.some(v => v != null);
+        if (!dedicated && input.bg !== 'video' && info?.bg && fs.existsSync(info.bg)) { try { const img = await loadImage(info.bg); drawClipBackground(g, img); background = dump('bg.rgba'); drawClipFrame(g, img, gameRect({ overlay: input.overlay !== false, layout: input.layout })); frame = dump('frame.rgba'); } catch { } }
         const text = String(input.caption || '').trim().slice(0, 90);
         if (text) { drawClipCaption(g, text); caption = dump('caption.rgba'); }
-        const args = clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards, background, frame, caption, overlay: input.overlay !== false });
         const total = (end - start) + (cards ? CARD_IN + CARD_OUT : 0);
-        clipJob = { running: true, progress: 0, name: outName, error: null, started: Date.now() };
-        const pr = spawn(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), args, { windowsHide: true }); let err = '';
-        pr.stderr.on('data', d => {
-          err = (err + d).slice(-4000);
-          // images encodées / images attendues (60 i/s) : « time= » reste bloqué tant que le son décalé n'arrive pas
-          const fr = String(d).match(/frame=\s*(\d+)/g); if (fr) clipJob.progress = Math.min(0.99, +fr.at(-1).replace(/\D/g, '') / (total * 60));
-        });
-        pr.on('close', code => { fs.rmSync(tmp, { recursive: true, force: true }); Object.assign(clipJob, { running: false, progress: 1, error: code ? 'ffmpeg : ' + err.trim().split(/\r?\n/).slice(-2).join(' ') : null }); });
+        clipJob = { running: true, progress: 0, phase: dedicated ? 'danser' : 'ffmpeg', name: outName, error: null, started: Date.now() };
+        const share = dedicated ? 0.6 : 0;   // part de la barre pour le rendu danser
+        (async () => {
+          try {
+            let input0 = src, s0 = start, e0 = end;
+            if (dedicated) { const rv = await renderVertical({ info, vt, start, end, tmp, opacity: +input.opacity || 0.45, onProgress: p => { clipJob.progress = p * share; } }); input0 = rv.file; s0 = rv.lead; e0 = rv.lead + (end - start); clipJob.phase = 'ffmpeg'; }
+            const args = clipArgs({ input: input0, output: path.join(app.paths.output, outName), start: s0, end: e0, layout: input.layout, encoder: enc, cards, background, frame, caption, overlay: input.overlay !== false, native: dedicated });
+            await new Promise((ok, ko) => {
+              const pr = spawn(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), args, { windowsHide: true }); let err = '';
+              pr.stderr.on('data', d => {
+                err = (err + d).slice(-4000);
+                // images encodées / images attendues (60 i/s) : « time= » reste bloqué tant que le son décalé n'arrive pas
+                const fr = String(d).match(/frame=\s*(\d+)/g); if (fr) clipJob.progress = share + (1 - share) * Math.min(0.99, +fr.at(-1).replace(/\D/g, '') / (total * 60));
+              });
+              pr.on('close', code => code ? ko(Error('ffmpeg : ' + err.trim().split(/\r?\n/).slice(-2).join(' '))) : ok());
+            });
+            Object.assign(clipJob, { running: false, progress: 1 });
+          } catch (e) { Object.assign(clipJob, { running: false, progress: 1, error: e.message }); }
+          finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+        })();
         return send(res, 202, { ok: true, name: outName });
       }
       if (p === '/api/reveal') { const f = inside(app.paths.output, input.name || '.'); execFile('explorer', f && fs.existsSync(f) && input.name ? ['/select,', f] : [app.paths.output]); return send(res, 200, { ok: true }); }

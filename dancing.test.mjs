@@ -135,3 +135,10 @@ test('clip vertical : légende pendant le jeu seulement, étoile dessinée', asy
   assert(n.includes('[1:v]loop') && n.includes('setpts=PTS+0.000/TB[cap]'));
   const c = createCanvas(1080, 1920); drawClipCaption(c.getContext('2d'), 'FC 7★ en HDDT');
 });
+
+test('clip vertical dédié : vidéo danser 1080x1920 posée telle quelle, sans fond ni cadre', async () => {
+  const { clipArgs } = await import('./clips.mjs');
+  const s = clipArgs({ input: 'tt.mp4', output: 'o.mp4', start: 0, end: 10, native: true, background: 'bg.rgba', frame: 'fr.rgba', cards: { intro: 'i', outro: 'o' }, caption: 'c.rgba' }).join(' ');
+  assert(s.includes('scale=1080:1920:force_original_aspect_ratio=decrease') && !s.includes('bg.rgba') && !s.includes('fr.rgba'));
+  assert(s.includes('[4:v]loop') && s.includes('setpts=PTS+2.600/TB[cap]'));
+});

@@ -53,7 +53,9 @@ export function gameRect({ overlay = true, layout = 'full' } = {}) {
   const w = 1000, h = Math.round(w / (cw * 16 / (ch * 9)) / 2) * 2;
   return { crop: `crop=iw*${cw}:ih*${ch}:iw*${cx}:ih*${cy}`, frac: [cx, cy, cw, ch], w, h, x: 40, y: Math.round((1920 - h) / 2 / 2) * 2 };
 }
-export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null, overlay = true, background = null, frame = null, caption = null }) {
+// native : la vidéo est déjà verticale (rendu danser dédié 1080x1920, fond de la map moins assombri) : posée telle quelle.
+export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null, overlay = true, background = null, frame = null, caption = null, native = false }) {
+  if (native) background = frame = null;
   const dur = Math.max(0.5, end - start), f = n => n.toFixed(3);
   const I = cards ? CARD_IN : 0, O = cards ? CARD_OUT : 0, T = I + dur + O, R = gameRect({ overlay, layout });
   const raw = file => ['-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', '1080x1920', '-framerate', '60', '-i', file];
@@ -63,7 +65,7 @@ export function clipArgs({ input, output, start, end, layout = 'full', encoder =
   // intro/fin : la vidéo du jeu est prolongée (première et dernière image) avant d'être posée sur le fond
   const pad = cards ? `,tpad=start_duration=${f(I)}:start_mode=clone:stop_duration=${f(O)}:stop_mode=clone` : '';
   // fond de la map flouté, jeu opaque dans son cadre, puis le cadre aux bords fondus par-dessus (fond percé d'un trou flou)
-  const vert = background
+  const vert = native ? `[0:v]fps=60,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1${pad}` : background
     ? `${still(bgIdx, T)},format=yuv420p[bg];[0:v]fps=60,${R.crop},scale=${R.w}:${R.h}${pad}[fg];[bg][fg]overlay=${R.x}:${R.y}:shortest=1` + (frame ? `[g1];${still(frameIdx, T)},format=rgba[fr];[g1][fr]overlay=0:0:shortest=1,setsar=1` : ',setsar=1')
     : `[0:v]fps=60,split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2[bg];[b]${R.crop},scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1${pad}`;
   const enc = /nvenc/.test(encoder) ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20', '-b:v', '0'] : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];

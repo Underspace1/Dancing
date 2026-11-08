@@ -500,9 +500,13 @@ function closeEditor() {
 }
 async function openEditor(name) {
   closeEditor(); $('#modal').hidden = true; releaseVideos($('#mBody')); releaseVideos($('#videoList'));
-  const C = S.app.clip ||= { layout: 'zoom', cards: true, overlay: false, bg: 'map' }; C.caption ??= '';
+  const C = S.app.clip ||= { layout: 'zoom', cards: true, overlay: false, bg: 'dedicated' }; C.caption ??= ''; C.opacity ??= 0.45;
+  if (C.v !== 2) { C.bg = 'dedicated'; C.v = 2; }   // 3.3 : le rendu vertical dédié devient le fond par défaut
   const keep = () => save(true);
-  const { moments = [], info: cardInfo = null } = await api('/api/moments?name=' + encodeURIComponent(name)).catch(() => ({}));
+  const { moments = [], info: cardInfo = null, vt = null } = await api('/api/moments?name=' + encodeURIComponent(name)).catch(() => ({}));
+  // rendu vertical dédié possible si la vidéo connaît son replay et la correspondance des temps (vidéos exportées depuis la 3.3)
+  const canDedicated = !!(cardInfo?.replay && vt?.map?.some(v => v != null));
+  if (C.bg === 'dedicated' && !canDedicated) C.bg = cardInfo?.bg ? 'map' : 'video';
   const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
   const st = edState = { raf: 0, poll: 0, start: 0, end: 0, keys: null };
   const video = el('video', { class: 'ed-video', preload: 'auto', playsinline: true }), vstatus = el('div', { class: 'ed-vstatus', hidden: true });
@@ -565,7 +569,13 @@ async function openEditor(name) {
     const vw = video.videoWidth, vh = video.videoHeight; pg.filter = 'none'; pg.globalAlpha = 1; pg.fillStyle = '#0b0b0e'; pg.fillRect(0, 0, 360, 640);
     if (!vw) return;
     const R = rect(), [cx, cy, cw, ch] = R.f.map((v, i) => v * (i % 2 ? vh : vw));
-    if (C.bg === 'map' && ok(A.bg)) { pg.drawImage(A.bg, 0, 0, 360, 640); pg.drawImage(video, cx, cy, cw, ch, R.x * K, R.y * K, R.w * K, R.h * K); if (ok(A.frame)) pg.drawImage(A.frame, 0, 0, 360, 640); }
+    // rendu vertical dédié (approximation) : image de la map assombrie selon la visibilité choisie, cercles par-dessus
+    if (C.bg === 'dedicated' && ok(bgImg)) {
+      pg.filter = 'blur(2px)'; cover(bgImg); pg.filter = 'none'; pg.fillStyle = `rgba(0,0,0,${1 - C.opacity})`; pg.fillRect(0, 0, 360, 640);
+      const [px, py, pw, ph] = [0.2, 0.08, 0.6, 0.84].map((v, i) => v * (i % 2 ? vh : vw)), dh = 344 * ph / pw;
+      pg.globalCompositeOperation = 'lighten'; pg.drawImage(video, px, py, pw, ph, 8, (640 - dh) / 2, 344, dh); pg.globalCompositeOperation = 'source-over';
+    }
+    else if (C.bg === 'map' && ok(A.bg)) { pg.drawImage(A.bg, 0, 0, 360, 640); pg.drawImage(video, cx, cy, cw, ch, R.x * K, R.y * K, R.w * K, R.h * K); if (ok(A.frame)) pg.drawImage(A.frame, 0, 0, 360, 640); }
     else { pg.filter = 'blur(9px)'; cover(video); pg.filter = 'none'; const dh = 360 * ch / cw; pg.drawImage(video, cx, cy, cw, ch, 0, (640 - dh) / 2, 360, dh); }
   };
   const caption = () => {
@@ -591,24 +601,30 @@ async function openEditor(name) {
 
   // réglages
   const layoutSeg = segField('Cadrage avec overlay', [['zoom', 'Zoom sur le jeu'], ['full', 'Plein cadre']], () => C.layout, v => { C.layout = v; refreshFrame(); keep(); });
-  layoutSeg.hidden = !C.overlay;
+  // rendu vertical dédié : seul réglage, la visibilité du fond (le reste ne concerne que le recadrage de la vidéo exportée)
+  const opacityRow = range('Visibilité du fond de la map', { min: 0.1, max: 0.8, step: 0.05, fmt: v => Math.round(v * 100) + ' %' }, () => C.opacity, (v, live) => { C.opacity = v; if (!live) keep(); });
+  const overlaySw = sw('Afficher l’overlay', () => C.overlay, v => { C.overlay = v; layoutSeg.hidden = !v || C.bg === 'dedicated'; refreshFrame(); keep(); }, 'Désactivé : recadré sur le terrain de jeu');
+  const showFor = () => { const d = C.bg === 'dedicated'; opacityRow.hidden = !d; overlaySw.hidden = d; layoutSeg.hidden = d || !C.overlay; };
+  const modes = [canDedicated && ['dedicated', 'Rendu vertical'], bgImg && ['map', 'Fond flouté'], ['video', 'Vidéo floutée']].filter(Boolean);
   const settings = el('div', { class: 'ed-settings' },
-    bgImg ? segField('Fond', [['map', 'Fond de la map'], ['video', 'Vidéo floutée']], () => C.bg, v => { C.bg = v; keep(); }) : null,
-    sw('Afficher l’overlay', () => C.overlay, v => { C.overlay = v; layoutSeg.hidden = !v; refreshFrame(); keep(); }, 'Désactivé : recadré sur le terrain de jeu'),
+    modes.length > 1 ? segField('Fond', modes, () => C.bg, v => { C.bg = v; showFor(); keep(); }) : null,
+    canDedicated ? el('p', { class: 'muted', style: 'font-size:12px;margin:-4px 0 0' }, 'Rendu vertical : danser rejoue le passage en 1080×1920, cercles sur le fond de la map moins assombri, comme en baissant le « background dim » d’osu!.') : null,
+    opacityRow, overlaySw,
     layoutSeg,
     cardInfo ? sw('Intro et fin animées', () => C.cards, v => { C.cards = v; keep(); }, 'Carte de la map au début, carte du score à la fin') : el('p', { class: 'muted', style: 'font-size:12px' }, 'Intro et fin animées : pour les vidéos exportées à partir de la 3.1.'),
     el('div', { class: 'field' }, el('div', { class: 'lab' }, 'Légende en haut du clip'), el('input', { value: C.caption, maxlength: 90, placeholder: 'ex. FC 7★ en HDDT', oninput: e => { C.caption = e.target.value; }, onchange: keep })));
 
+  showFor();
   // export en tâche de fond avec progression
   const bar = el('div', { class: 'ed-bar', hidden: true }, el('i')), result = el('div', { class: 'ed-result' });
   const go = el('button', { class: 'btn primary ed-go', onclick: async () => {
     video.pause(); go.disabled = true; result.replaceChildren(); bar.hidden = false; bar.firstChild.style.width = '0%';
     try {
-      await api('/api/clip', { name, start: st.start, end: st.end, layout: C.layout, cards: C.cards, overlay: C.overlay, bg: C.bg, caption: C.caption });
+      await api('/api/clip', { name, start: st.start, end: st.end, layout: C.layout, cards: C.cards, overlay: C.overlay, bg: C.bg, opacity: C.opacity, caption: C.caption });
       const tick = async () => {
         const j = await api('/api/clip-job').catch(() => null); if (!j || edState !== st) return;
         const p = Math.round(j.progress * 100); bar.classList.toggle('wait', j.running && !p); bar.firstChild.style.width = p + '%';
-        go.textContent = !j.running ? 'Exporter le clip vertical' : p ? `Export… ${p} %` : 'Préparation de l’intro…';
+        go.textContent = !j.running ? 'Exporter le clip vertical' : j.phase === 'danser' ? `Rendu danser… ${p} %` : p ? `Export… ${p} %` : 'Préparation de l’intro…';
         if (j.running) { st.poll = setTimeout(tick, 400); return; }
         go.disabled = false; bar.hidden = true;
         if (j.error) return toast(j.error, true);
