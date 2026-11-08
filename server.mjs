@@ -111,16 +111,23 @@ function readOsr(buf) {
   let o = 0;
   const b = () => buf[o++], s16 = () => { const v = buf.readUInt16LE(o); o += 2; return v; }, s32 = () => { const v = buf.readInt32LE(o); o += 4; return v; };
   const str = () => { if (b() !== 0x0b) return ''; let len = 0, sh = 0, x; do { x = b(); len |= (x & 127) << sh; sh += 7; } while (x & 128); const v = buf.toString('utf8', o, o + len); o += len; return v; };
-  const mode = b(); s32(); const md5 = str(), player = str(); str();
+  const mode = b(), version = s32(), md5 = str(), player = str(); str();
   const n300 = s16(), n100 = s16(), n50 = s16(), geki = s16(), katu = s16(), miss = s16(), score = s32(), combo = s16(); b(); const mods = s32(); str();
   const ticks = buf.readBigInt64LE(o); const date = new Date(Number((ticks - 621355968000000000n) / 10000n));
   const total = n300 + n100 + n50 + miss;
   const mtotal = total + geki + katu, acc = mode === 3 ? (mtotal ? (300 * (n300 + geki) + 200 * katu + 100 * n100 + 50 * n50) / (3 * mtotal) : 0) : total ? (300 * n300 + 100 * n100 + 50 * n50) / (3 * total) : 0;
-  return { mode, md5, player, n300, n100, n50, miss, score, combo, mods: modString(mods), acc, date: date.toISOString() };
+  // lazer écrit une version « dans 1000 ans » (30000000+) : danser le détecte aussi et simule alors les règles de lazer
+  // (notelock, santé, réglages des mods Classic / Difficulty Adjust / vitesse).
+  return { mode, md5, player, n300, n100, n50, miss, score, combo, mods: modString(mods), acc, date: date.toISOString(), lazer: version >= 30000000 };
 }
 const MODS = [[0, 'NF'], [1, 'EZ'], [3, 'HD'], [4, 'HR'], [5, 'SD'], [9, 'NC'], [6, 'DT'], [7, 'RX'], [8, 'HT'], [10, 'FL'], [12, 'SO'], [13, 'AP'], [14, 'PF']];
 function modString(m) { const out = []; for (const [bit, n] of MODS) if (m & (1 << bit)) { if (n === 'DT' && out.includes('NC')) continue; if (n === 'SD' && m & (1 << 14)) continue; out.push(n); } return out; }
-function titleFromName(name) { const m = name.match(/^(.+?) - (.+) \[(.+)\] \(\d{4}-\d{2}-\d{2}\)/); return m ? { song: m[2], diff: m[3] } : { song: name.replace(/\.osr$/i, ''), diff: '' }; }
+// stable : « Joueur - Artiste - Titre [Diff] (2026-07-04) Osu.osr » ; lazer : « Joueur playing Artiste - Titre (Mappeur) [Diff] (2026-07-04_23-13).osr »
+function titleFromName(name) {
+  const lz = name.match(/^.+? playing (.+) \([^()]*\) \[(.+)\] \(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\)/);
+  if (lz) return { song: lz[1], diff: lz[2] };
+  const m = name.match(/^(.+?) - (.+) \[(.+)\] \(\d{4}-\d{2}-\d{2}\)/); return m ? { song: m[2], diff: m[3] } : { song: name.replace(/\.osr$/i, ''), diff: '' };
+}
 // Le replay vise une version de la map qui n'est plus dans Songs (map mise à jour par son mappeur) : danser cherche par md5 et abandonne.
 // On retrouve la version installée par « Artiste - Titre [Diff] » (nom du fichier .osr) dans danser.db, la plus récente si plusieurs.
 function updatedMapMd5(dbFile, replayName) {
@@ -133,8 +140,14 @@ function updatedMapMd5(dbFile, replayName) {
     finally { db.close(); }
   } catch { return null; }
 }
+// Replays exportés par osu! lazer : %APPDATA%\osu\exports, ou le dossier choisi dans lazer (storage.ini, FullPath = …).
+function lazerExports() {
+  const base = path.join(process.env.APPDATA || '', 'osu');
+  try { const m = fs.readFileSync(path.join(base, 'storage.ini'), 'utf8').match(/^\s*FullPath\s*=\s*(.+?)\s*$/m); if (m) return path.join(m[1], 'exports'); } catch { }
+  return path.join(base, 'exports');
+}
 async function listReplays() {
-  const dirs = [path.join(root, 'data', 'replays'), osuDir('Replays') || path.join(process.env.LOCALAPPDATA || '', 'osu!', 'Replays')];
+  const dirs = [path.join(root, 'data', 'replays'), osuDir('Replays') || path.join(process.env.LOCALAPPDATA || '', 'osu!', 'Replays'), lazerExports()];
   const seen = new Set(), out = [];
   for (const dir of dirs) {
     let names = []; try { names = await fsp.readdir(dir); } catch { continue; }

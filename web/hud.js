@@ -396,5 +396,7 @@ export class Timeline {
   }
 }
 
-export const modList = s => (String(s || '').match(/[A-Z]{2}/g) || []).filter(x => x !== 'LZ');
+// danser écrit les mods puis leurs réglages lazer : « LZCLDAAR10OD8.6S1.38xMR0 ». On retire les réglages (AR/OD/CS/HP n, S n x, MR n)
+// avant de couper en paires, sinon « AR10 » devient un faux mod « AR ». LZ (replay lazer) n'est pas un mod affiché.
+export const modList = s => (String(s || '').replace(/(AR|OD|CS|HP)\d+(\.\d+)?|S\d+(\.\d+)?x/g, '').replace(/MR\d/g, 'MR').match(/[A-Z]{2}/g) || []).filter(x => x !== 'LZ');
 export const sortBoard = (list, sort) => list.sort((a, b) => sort === 'score' ? b.score - a.score : ((b.pp ?? -1) - (a.pp ?? -1)) || (b.score - a.score));

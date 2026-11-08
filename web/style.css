@@ -427,6 +427,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.35); box-sha
 
 /* ---- osu!mania */
 .chip.mania { background: #3b1f3a; color: #ffb3dc; }
+.chip.lazer { background: #1f2c45; color: #9cc8ff; }
 .pcard .mania-sw { display: flex; gap: 3px; align-items: flex-end; height: 26px; }
 .pcard .mania-sw i { width: 9px; border-radius: 3px; height: 100%; background: #e9ebf2; }
 .pcard .mania-sw i:nth-child(1) { height: 40%; } .pcard .mania-sw i:nth-child(2) { height: 85%; } .pcard .mania-sw i:nth-child(3) { height: 60%; } .pcard .mania-sw i:nth-child(4) { height: 100%; }

@@ -81,3 +81,12 @@ test('créateur : anciennes créations relues, nouvelles options appliquées', (
   assert.match(html, />Perf</);
   assert.match(html, /color:#ff0000/);
 });
+
+test('mods des replays lazer : réglages retirés, LZ masqué', async () => {
+  const { modList } = await import('./web/hud.js');
+  assert.deepEqual(modList('LZCLDAAR10'), ['CL', 'DA']);
+  assert.deepEqual(modList('LZDAAR10OD8.6'), ['DA']);
+  assert.deepEqual(modList('LZDTHDRXS1.14x'), ['DT', 'HD', 'RX']);
+  assert.deepEqual(modList('HDHRMR0'), ['HD', 'HR', 'MR']);
+  assert.deepEqual(modList('HDDT'), ['HD', 'DT']);
+});

@@ -394,7 +394,7 @@ function replayList() {
   $('#replayList').replaceChildren(...(items.length ? items.slice(0, 300).map((r, i) => el('div', { class: 'rp' + (S.selected?.id === r.id ? ' on' : ''), style: `--i:${Math.min(i, 20)}`, onclick: () => select_(r) },
     el('div', { class: 'l1' }, el('b', {}, r.song), el('span', { class: 'acc' }, r.acc.toFixed(2) + '%')),
     el('div', { class: 'l2' }, `[${r.diff}] · ${r.player}`),
-    el('div', { class: 'l3' }, r.mode === 3 ? el('span', { class: 'chip mania' }, 'MANIA') : null, ...r.mods.map(m => el('span', { class: 'chip ' + m }, m)), el('span', {}, `${r.combo}x`), r.miss ? el('span', { style: 'color:var(--bad)' }, `${r.miss} miss`) : null, el('span', { class: 'when' }, ago(r.date))))) : [el('div', { class: 'empty' }, S.replays.length ? 'Aucun résultat' : 'Aucun replay trouvé.')]));
+    el('div', { class: 'l3' }, r.mode === 3 ? el('span', { class: 'chip mania' }, 'MANIA') : null, r.lazer ? el('span', { class: 'chip lazer', title: 'Replay osu! lazer : rejoué avec les règles de lazer' }, 'LAZER') : null, ...r.mods.map(m => el('span', { class: 'chip ' + m }, m)), el('span', {}, `${r.combo}x`), r.miss ? el('span', { style: 'color:var(--bad)' }, `${r.miss} miss`) : null, el('span', { class: 'when' }, ago(r.date))))) : [el('div', { class: 'empty' }, S.replays.length ? 'Aucun résultat' : 'Aucun replay trouvé.')]));
 }
 function select_(r) {
   S.selected = r;
@@ -409,7 +409,7 @@ function select_(r) {
   }
   localStorage.setItem('rh.sel', r.id);
   $$('.rp').forEach(x => x.classList.remove('on')); replayList();
-  $('#crumb').replaceChildren(el('b', {}, r.song), el('span', { class: 'dim' }, `[${r.diff}]`), el('span', { class: 'dim' }, '·'), el('span', { class: 'muted' }, r.player), ...r.mods.map(m => el('span', { class: 'chip ' + m }, m)));
+  $('#crumb').replaceChildren(el('b', {}, r.song), el('span', { class: 'dim' }, `[${r.diff}]`), el('span', { class: 'dim' }, '·'), el('span', { class: 'muted' }, r.player), ...(r.lazer ? [el('span', { class: 'chip lazer' }, 'LAZER')] : []), ...r.mods.map(m => el('span', { class: 'chip ' + m }, m)));
   $('#selected').replaceChildren(el('div', {}, el('div', { class: 't' }, r.song), el('div', { class: 's' }, `[${r.diff}] · ${r.player} · ${new Date(r.date).toLocaleString('fr-FR')}`)),
     el('div', { class: 'stats' }, ...[['Précision', r.acc.toFixed(2) + '%'], ['Combo', r.combo + 'x'], ['Miss', r.miss], ['Score', r.score.toLocaleString('fr-FR')]].map(([a, b]) => el('div', { class: 'stat' }, el('b', {}, String(b)), el('span', {}, a)))));
   if (!S.exportData) rebuildTimeline();
