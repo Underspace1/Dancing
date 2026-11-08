@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>tosu stage</title>
+<style>html,body{margin:0;background:transparent;overflow:hidden;color-scheme:light}iframe{position:absolute;border:0;background:transparent;color-scheme:light;transform-origin:0 0}</style></head>
+<body>
+<script>
+// Render stage for tosu widgets: driven over CDP by compose.mjs, one call per video frame.
+window.__tosuBus = { last: null };
+window.__stage = {
+  frames: [],
+  // widgets: [{ folder, x, y, w, h, s, o }] in output pixels
+  setup(widgets) {
+    return Promise.all(widgets.map(wd => new Promise(res => {
+      const f = document.createElement('iframe');
+      f.src = `/tosu/${encodeURIComponent(wd.folder)}/`;
+      Object.assign(f.style, { left: wd.x + 'px', top: wd.y + 'px', width: wd.w + 'px', height: wd.h + 'px', transform: `scale(${wd.s})`, opacity: wd.o ?? 1 });
+      f.setAttribute('allowtransparency', 'true');
+      f.onload = () => res(); setTimeout(res, 6000);
+      document.body.appendChild(f); this.frames.push(f);
+    }))).then(() => new Promise(r => setTimeout(r, 1200))).then(() => { for (const f of this.frames) try { f.contentWindow.__vt.enable(); } catch { } return this.frames.length; });
+  },
+  // push the replay state, advance every widget's clock to t (ms), wait for a paint
+  frame(t, msgs) {
+    window.__tosuBus.last = msgs;
+    for (const f of this.frames) { try { const w = f.contentWindow; w.__tosuDeliver(msgs); w.__vt.advanceTo(t); } catch (e) { } }
+    return new Promise(resolve => {
+      let paint = requestAnimationFrame(() => {
+        paint = requestAnimationFrame(() => {
+          clearTimeout(fallback);
+          resolve(true);
+        });
+      });
+      const fallback = setTimeout(() => {
+        cancelAnimationFrame(paint);
+        resolve(true);
+      }, 80);
+    });
+  },
+};
+</script>
+</body></html>

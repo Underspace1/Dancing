@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Précision du replay</title>
+  <style>
+    body { margin: 0; color: #f7f7fa; font: 16px system-ui, sans-serif; }
+    main { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; margin: 5px; border: 1px solid #74798e; border-radius: 14px; background: #171923ed; }
+    small { display: block; color: #c7ccdf; }
+    output { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <main><div><small>PRÉCISION</small><output id="acc">–</output></div><div><small>UR</small><output id="ur">–</output></div></main>
+  <script>
+    const acc = document.getElementById('acc'), ur = document.getElementById('ur');
+    const socket = new WebSocket('ws://127.0.0.1:24050/websocket/v2');
+    socket.addEventListener('message', event => {
+      const { play } = JSON.parse(event.data);
+      if (!play) return;
+      acc.textContent = Number.isFinite(play.accuracy) ? play.accuracy.toFixed(2) + ' %' : '–';
+      ur.textContent = Number.isFinite(play.unstableRate) ? play.unstableRate.toFixed(0) : '–';
+    });
+  </script>
+</body>
+</html>

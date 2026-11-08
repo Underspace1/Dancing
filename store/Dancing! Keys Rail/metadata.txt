@@ -1,0 +1,7 @@
+Usecase: ingame, obs-overlay
+Name: Keys Rail
+Version: 2.0
+Author: Dancing!
+CompatibleWith: tosu
+Resolution: 320x76
+Glass: 14

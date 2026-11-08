@@ -1,0 +1,7 @@
+Usecase: ingame, obs-overlay
+Name: Key BPM
+Version: 2.0
+Author: Dancing!
+CompatibleWith: tosu
+Resolution: 240x96
+Glass: 14

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dancing! — tes replays osu! en vidéo</title>
+  <meta name="description" content="Dancing! transforme tes replays osu! en vidéos avec overlay façon tournoi, intro et résultats façon lazer, widgets en verre et osu!mania. danser et tosu inclus.">
+  <meta name="theme-color" content="#09090b">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/anton.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#contenu">Aller au contenu</a>
+
+  <header class="top">
+    <a class="brand" href="#" aria-label="Dancing!, accueil">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="6.5"/></svg>
+      <span>DANCING!</span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#video">Vidéo</a>
+      <a href="#decouvrir">Découvrir</a>
+      <a href="#fonctionnalites">Fonctionnalités</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-sm" href="Dancing!-Setup.exe" download>Télécharger</a>
+  </header>
+
+  <main id="contenu">
+    <section class="hero">
+      <div class="rings" aria-hidden="true"><i></i><i></i><i></i></div>
+      <p class="kicker">Replays osu! → vidéo · Windows · danser &amp; tosu inclus</p>
+      <h1 class="hero-title">
+        <span class="line"><span>TES REPLAYS.</span></span>
+        <span class="line accent"><span>EN VIDÉO.</span></span>
+      </h1>
+      <p class="lead reveal">Glisse un .osr, choisis ton overlay, exporte. Rendu danser, overlay façon tournoi, intro et résultats façon lazer… et même l’osu!mania.</p>
+      <div class="cta reveal">
+        <a class="btn btn-lg" href="Dancing!-Setup.exe" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7H3zM11.5 4.3 21 3v8.4h-9.5zM3 12.6h7.5v7L3 18.5zM11.5 12.6H21V21l-9.5-1.3z"/></svg>
+          Télécharger pour Windows
+        </a>
+        <span class="small">Windows 10 / 11 · un seul fichier · tes réglages gardés à chaque mise à jour</span>
+      </div>
+      <figure class="hero-shot" id="heroShot">
+        <img src="assets/app.jpg" width="1480" height="920" alt="L’interface de Dancing! : bibliothèque de replays, aperçu avec l’overlay, réglages de l’overlay">
+      </figure>
+    </section>
+
+    <div class="marquee marquee-pink" data-speed="70" aria-hidden="true">
+      <div class="track"><span>OVERLAY TOURNOI ✦ OSU!MANIA ✦ WIDGETS EN VERRE ✦ INTRO LAZER ✦ CRÉATEUR DE WIDGETS ✦ </span><span>OVERLAY TOURNOI ✦ OSU!MANIA ✦ WIDGETS EN VERRE ✦ INTRO LAZER ✦ CRÉATEUR DE WIDGETS ✦ </span></div>
+    </div>
+
+    <section class="reel" id="video">
+      <h2 class="big"><span class="line"><span>VOIS-LE</span></span><span class="line accent"><span>EN ACTION.</span></span></h2>
+      <figure class="reel-frame" id="reel">
+        <video src="assets/pub.mp4" poster="assets/pub-poster.jpg" muted loop playsinline preload="metadata" aria-label="Vidéo de présentation de Dancing!"></video>
+        <button class="sound" type="button" aria-pressed="false"><span class="dot"></span><span class="txt">Activer le son</span></button>
+      </figure>
+    </section>
+
+    <section class="shows" id="decouvrir">
+      <article class="show">
+        <figure class="shot"><img src="assets/overlay.jpg" width="1600" height="900" loading="lazy" alt="Un replay rendu par danser avec l’overlay Dancing! : bandeau de vie, classement, combo et pp"></figure>
+        <div class="copy">
+          <span class="num">01</span>
+          <h2 class="big"><span class="line"><span>OVERLAY</span></span><span class="line accent"><span>TOURNOI.</span></span></h2>
+          <p class="reveal">Bandeau de vie incurvé, combo et pp qui défilent, barre d’erreur, classement trié par pp. Le preset Référence reproduit l’overlay CPOL au pixel près.</p>
+        </div>
+      </article>
+
+      <article class="show flip">
+        <figure class="shot swap" id="maniaSwap">
+          <img src="assets/mania-colonne.jpg" width="1600" height="900" loading="lazy" alt="Replay osu!mania avec l’overlay Colonne">
+          <img src="assets/mania-arcade.jpg" width="1600" height="900" loading="lazy" alt="Le même replay avec l’overlay Arcade" class="alt">
+        </figure>
+        <div class="copy">
+          <span class="num">02</span>
+          <h2 class="big"><span class="line"><span>OSU!MANIA.</span></span><span class="line accent"><span>EXCLUSIF.</span></span></h2>
+          <p class="reveal">danser ne sait pas le faire : Dancing! dessine le mania lui-même. Notes longues, jugements, musique, et trois overlays rien que pour lui : Colonne, Arcade, Épuré.</p>
+        </div>
+      </article>
+
+      <article class="show">
+        <figure class="shot"><img src="assets/store.jpg" width="1480" height="920" loading="lazy" alt="La bibliothèque de widgets avec les widgets en verre du store Dancing!"></figure>
+        <div class="copy">
+          <span class="num">03</span>
+          <h2 class="big"><span class="line"><span>WIDGETS</span></span><span class="line accent"><span>EN VERRE.</span></span></h2>
+          <p class="reveal">Ticket, PP Gauge, Hit Ladder, Combo Stamp, Keys Rail : le jeu derrière est vraiment flouté, dans l’aperçu comme dans la vidéo. Et tout le catalogue tosu à portée de clic.</p>
+        </div>
+      </article>
+
+      <article class="show flip">
+        <figure class="shot"><img src="assets/createur.jpg" width="1480" height="920" loading="lazy" alt="Le créateur de widgets : éléments à choisir et aperçu en direct"></figure>
+        <div class="copy">
+          <span class="num">04</span>
+          <h2 class="big"><span class="line"><span>CRÉE</span></span><span class="line accent"><span>LES TIENS.</span></span></h2>
+          <p class="reveal">26 données, 5 fonds, polices, couleurs, grilles, animations. Tu cliques, le widget se construit sous tes yeux, et il marche dans tosu comme dans tes vidéos.</p>
+        </div>
+      </article>
+
+      <article class="show">
+        <figure class="shot swap" id="scenesSwap">
+          <img src="assets/intro.jpg" width="1600" height="900" loading="lazy" alt="L’intro façon osu!lazer avant le replay">
+          <img src="assets/resultats.jpg" width="1600" height="900" loading="lazy" alt="L’écran de résultats façon osu!lazer" class="alt">
+        </figure>
+        <div class="copy">
+          <span class="num">05</span>
+          <h2 class="big"><span class="line"><span>INTRO &amp;</span></span><span class="line accent"><span>RÉSULTATS.</span></span></h2>
+          <p class="reveal">L’écran de chargement avant la map et les résultats à la fin, façon osu!lazer, avec la musique de la map en fond. Ta vidéo commence et se termine comme dans le jeu.</p>
+        </div>
+      </article>
+
+      <article class="show flip">
+        <figure class="shot install"><img src="assets/installateur.jpg" width="1640" height="1040" loading="lazy" alt="L’installateur de Dancing!"></figure>
+        <div class="copy">
+          <span class="num">06</span>
+          <h2 class="big"><span class="line"><span>DEUX</span></span><span class="line accent"><span>CLICS.</span></span></h2>
+          <p class="reveal">Un seul fichier. danser, tosu, ffmpeg et le moteur des widgets sont déjà dedans. À chaque mise à jour, tes réglages, tes replays et tes vidéos restent là.</p>
+        </div>
+      </article>
+    </section>
+
+    <div class="marquee marquee-light" data-speed="-55" aria-hidden="true">
+      <div class="track"><span>TOUT EN LOCAL ✦ DANSER &amp; TOSU INCLUS ✦ WINDOWS 10 / 11 ✦ EN FRANÇAIS ✦ </span><span>TOUT EN LOCAL ✦ DANSER &amp; TOSU INCLUS ✦ WINDOWS 10 / 11 ✦ EN FRANÇAIS ✦ </span></div>
+    </div>
+
+    <section class="stats" aria-label="En chiffres">
+      <div class="stat reveal"><b data-count="10">0</b><span>presets d’overlay</span></div>
+      <div class="stat reveal"><b data-count="26">0</b><span>données pour tes widgets</span></div>
+      <div class="stat reveal"><b data-count="3">0</b><span>overlays osu!mania</span></div>
+      <div class="stat reveal"><b data-count="5">0</b><span>widgets en verre offerts</span></div>
+    </section>
+
+    <section class="features" id="fonctionnalites">
+      <h2 class="section-title"><span class="line"><span>TOUT CE QU’IL Y A</span></span><span class="line accent"><span>DEDANS.</span></span></h2>
+      <div class="grid">
+        <div class="card reveal"><h3>Rendu danser</h3><p>Le jeu rendu par danser, flou de mouvement, jusqu’en 4K et 240 i/s.</p></div>
+        <div class="card reveal"><h3>Overlay tournoi</h3><p>Bandeau de vie, combo, pp, barre d’erreur et classement animés.</p></div>
+        <div class="card reveal"><h3>Intro &amp; résultats</h3><p>Chargement et écran de fin façon osu!lazer, avec la musique.</p></div>
+        <div class="card reveal"><h3>osu!mania</h3><p>Moteur maison, trois overlays exclusifs, notes longues et musique.</p></div>
+        <div class="card reveal"><h3>Widgets tosu</h3><p>Le catalogue officiel, téléchargé et placé en un clic.</p></div>
+        <div class="card reveal"><h3>Verre dépoli</h3><p>Un vrai flou derrière les widgets, jusque dans la vidéo.</p></div>
+        <div class="card reveal"><h3>Créateur</h3><p>Fabrique tes widgets : données, style, police, animations.</p></div>
+        <div class="card reveal"><h3>Presets &amp; couleurs</h3><p>Néon, Glacier, Ambre… ou la Référence, recolorée à ton goût.</p></div>
+        <div class="card reveal"><h3>Mode montage</h3><p>Déplace et redimensionne chaque élément à la souris.</p></div>
+        <div class="card reveal"><h3>Aperçu en direct</h3><p>Teste 12 secondes avant de lancer le rendu complet.</p></div>
+        <div class="card reveal"><h3>Overlay en direct</h3><p>Le même overlay dans OBS pendant que tu joues, via tosu.</p></div>
+        <div class="card reveal"><h3>Mises à jour</h3><p>danser et tosu se mettent à jour depuis l’app, sans rien perdre.</p></div>
+      </div>
+    </section>
+
+    <section class="faq" id="faq">
+      <h2 class="section-title"><span class="line"><span>QUESTIONS ?</span></span></h2>
+      <details class="reveal"><summary>Dancing!, c’est quoi exactement ?</summary><p>Un logiciel Windows qui prend un replay osu! (.osr) et en fait une vidéo prête à poster : le jeu rendu par danser, un overlay animé par-dessus, une intro et un écran de résultats.</p></details>
+      <details class="reveal"><summary>Je dois installer danser ou tosu à part ?</summary><p>Non. danser, tosu, ffmpeg et le moteur des widgets sont fournis avec Dancing!. Il te faut juste osu! et tes maps.</p></details>
+      <details class="reveal"><summary>Ça marche avec l’osu!mania ?</summary><p>Oui, avec trois overlays exclusifs. Seules les maps standard jouées en mode mania (maps converties) ne sont pas encore prises en charge.</p></details>
+      <details class="reveal"><summary>Je perds mes réglages en mettant à jour ?</summary><p>Non. L’installateur remplace le logiciel mais garde tes réglages, tes presets, tes replays importés et tes vidéos.</p></details>
+      <details class="reveal"><summary>Windows affiche un avertissement à l’installation, c’est normal ?</summary><p>Oui, Windows prévient pour les programmes peu connus. Clique sur « Informations complémentaires », puis « Exécuter quand même ».</p></details>
+      <details class="reveal"><summary>Dancing! est-il lié à osu! ?</summary><p>Non, c’est un projet indépendant, sans lien avec ppy. Il s’appuie sur danser et tosu, chacun sous sa propre licence.</p></details>
+    </section>
+
+    <section class="final">
+      <h2 class="mega"><span class="line"><span>PRÊT ?</span></span></h2>
+      <a class="btn btn-lg btn-invert reveal" href="Dancing!-Setup.exe" download>Télécharger Dancing!</a>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Dancing! — projet indépendant, sans lien avec osu! ni ppy.</span>
+    <span>Rendu par <a href="https://github.com/Wieku/danser-go">danser</a> · données par <a href="https://github.com/tosuapp/tosu">tosu</a> · polices Anton &amp; Nunito (OFL)</span>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>

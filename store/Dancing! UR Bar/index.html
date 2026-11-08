@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Dancing! UR Bar</title><style>
+:root { --accent: #66ccff; }
+@font-face { font-family: Nunito; font-weight: 600 900; src: local('Nunito'), url('/fonts/nunito-latin-800-normal.woff2'), url('/Replay%20HUD%202/fonts/nunito-800.woff2'); }
+html, body { margin: 0; width: 380px; height: 96px; background: transparent; overflow: hidden; }
+* { box-sizing: border-box; }
+.w { position: relative; width: 380px; height: 96px; border-radius: 14px; color: #fff; overflow: hidden;
+  background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.03) 55%, rgba(255,255,255,.07)), rgba(14,14,20,.34);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 1px rgba(255,255,255,.12), inset 0 -18px 30px -24px rgba(0,0,0,.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6);
+  font-family: Nunito, 'Segoe UI', sans-serif; text-shadow: 0 1px 8px rgba(0,0,0,.35); animation: in .7s cubic-bezier(.2,.9,.25,1.15) both; }
+.w::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.14), transparent 45%); }
+.lbl { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+.num { font-weight: 900; font-variant-numeric: tabular-nums; display: inline-block; }
+.kick { animation: kick .32s cubic-bezier(.3,1.6,.5,1); }
+@keyframes kick { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-2px) scale(1.08); } 100% { transform: none; } }
+@keyframes in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+
+
+.top { position: absolute; left: 0; right: 0; top: 8px; display: flex; justify-content: center; gap: 34px; text-align: center; }
+.top div { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.top .num { font-size: 22px; line-height: 1.1; }
+#ur { font-size: 28px; }
+canvas { position: absolute; left: 14px; bottom: 10px; }</style></head>
+<body><div class="w"><div class="top"><div><span class="lbl">SB</span><span class="num" id="sb">0</span></div><div><span class="lbl">UR</span><span class="num" id="ur">0</span></div><div><span class="lbl" style="color:#88e070">100</span><span class="num" id="ok">0</span></div></div><canvas id="c" width="704" height="44" style="width:352px;height:22px"></canvas></div>
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+// Smoothly rolling numbers + a short "kick" when the value goes up.
+const nums = new Map();
+function roll(el, target, digits = 0, speed = 14) {
+  let s = nums.get(el); if (!s) { s = { v: target, t: target }; nums.set(el, s); }
+  if (target !== s.t) { if (target > s.t) { el.classList.remove('kick'); void el.offsetWidth; el.classList.add('kick'); } s.t = target; }
+  s.speed = speed; s.digits = digits;
+}
+let last = 0;
+function frame(ts) {
+  const dt = Math.min(0.1, (ts - last) / 1000 || 0); last = ts;
+  for (const [el, s] of nums) { s.v += (s.t - s.v) * (1 - Math.exp(-s.speed * dt)); if (Math.abs(s.t - s.v) < 0.5 / 10 ** s.digits) s.v = s.t; el.textContent = s.digits ? s.v.toFixed(s.digits) : fmt(s.v); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// ?demo : fake play for the Dancing! store preview (no tosu needed).
+const G = { aim: Array.from({ length: 57 }, (_, i) => 60 + 40 * Math.sin(i / 5) ** 2 + 30 * Math.random()), speed: Array.from({ length: 57 }, (_, i) => 40 + 50 * Math.cos(i / 7) ** 2 + 20 * Math.random()) }, E = [];
+function demo(onData) {
+  let t = 0, combo = 0, max = 0, h = { '300': 0, '100': 0, '50': 0, '0': 0 }, k1 = 0, k2 = 0, lane = 0;
+  setInterval(() => {
+    t += 120; const r = Math.random();
+    if (r < 0.02) { h['0']++; combo = 0; } else { r < 0.07 ? h['100']++ : r < 0.075 ? h['50']++ : h['300']++; combo++; max = Math.max(max, combo); }
+    lane ? k2++ : k1++; lane ^= 1;
+    const n = h['300'] + h['100'] + h['50'] + h['0'], acc = n ? (300 * h['300'] + 100 * h['100'] + 50 * h['50']) / (3 * n) : 100;
+    onData({ beatmap: { title: 'over the top', artist: 'xi', version: 'interstellar dimensions', stats: { stars: { total: 7.84, live: 7.84 }, cs: { converted: 4 }, ar: { converted: 10 }, od: { converted: 10 }, hp: { converted: 5 }, bpm: { realtime: 220 }, hitWindow: { great: 19.5, ok: 59.5, meh: 99.5 } }, time: { firstObject: 0, lastObject: 228000, live: t * 4 % 228000 } },
+      play: { hitErrorArray: (E.push((Math.random() - .45) * 40), E.splice(0, E.length - 40), E), unstableRate: 70 + 30 * Math.random(), pp: { current: Math.min(486, t / 60), fc: 486 }, hits: { ...h, sliderBreaks: h['0'] ? 1 : 0 }, combo: { current: combo, max }, rank: { current: acc > 98 ? 'SS' : acc > 95 ? 'S' : 'A' } },
+      performance: { graph: { series: [{ name: 'aim', data: G.aim }, { name: 'speed', data: G.speed }], xaxis: G.aim.map((_, i) => i * 4000) } },
+      keys: { k1: { isPressed: !lane, count: k1 }, k2: { isPressed: !!lane, count: k2 } } });
+  }, 120);
+}
+function connect(url, onData) {
+  if (location.search.includes('demo')) return demo(onData);
+  const ws = new WebSocket(url);
+  ws.onmessage = e => { try { onData(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => setTimeout(() => connect(url, onData), 1000);
+}
+const host = location.host || '127.0.0.1:24050';
+</script><script>const c = $('#c'), g = c.getContext('2d');
+function update(d) {
+  const hw = d.beatmap?.stats?.hitWindow || {}, w50 = hw.meh || 100, w100 = hw.ok || 60, w300 = hw.great || 20, errs = (d.play?.hitErrorArray || []).slice(-30);
+  const W = c.width, H = c.height, mid = W / 2, x = e => mid + Math.max(-1, Math.min(1, e / w50)) * (W / 2 - 4), barY = H - 14;
+  g.clearRect(0, 0, W, H);
+  [[w50, '#ffcc22'], [w100, '#88e070'], [w300, '#66ccff']].forEach(([w, col]) => { g.fillStyle = col; g.beginPath(); g.roundRect(x(-w), barY, x(w) - x(-w), 8, 4); g.fill(); });
+  errs.forEach((e, i) => { g.globalAlpha = .25 + .75 * (i + 1) / errs.length; g.fillStyle = Math.abs(e) <= w300 ? '#bfeaff' : Math.abs(e) <= w100 ? '#c8f5b0' : '#ffe08a'; g.fillRect(x(e) - 2, 2, 4, H - 6); });
+  g.globalAlpha = 1; const mean = errs.reduce((a, b) => a + b, 0) / Math.max(1, errs.length);
+  g.fillStyle = '#fff'; g.beginPath(); g.moveTo(x(mean), barY - 2); g.lineTo(x(mean) - 7, barY - 12); g.lineTo(x(mean) + 7, barY - 12); g.closePath(); g.fill();
+  roll($('#ur'), d.play?.unstableRate || 0, 0, 8); roll($('#sb'), d.play?.hits?.sliderBreaks || 0); roll($('#ok'), d.play?.hits?.['100'] || 0);
+}
+connect('ws://' + host + '/websocket/v2', d => update(d));</script></body></html>

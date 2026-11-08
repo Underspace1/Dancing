@@ -1,0 +1,548 @@
+diff --git a/app/app.go b/app/app.go
+index ae5f882..205cb81 100644
+--- a/app/app.go
++++ b/app/app.go
+@@ -17,6 +17,7 @@ import (
+ 	"github.com/wieku/danser-go/app/input"
+ 	"github.com/wieku/danser-go/app/settings"
+ 	"github.com/wieku/danser-go/app/states"
++	"github.com/wieku/danser-go/app/states/components/overlays"
+ 	"github.com/wieku/danser-go/app/utils"
+ 	"github.com/wieku/danser-go/build"
+ 	"github.com/wieku/danser-go/framework/assets"
+@@ -678,6 +679,7 @@ func mainLoopRecord() {
+ 				fbo.Unbind()
+ 
+ 				count++
++				overlays.HUDExportFrame()
+ 
+ 				timeOffset := p.GetTimeOffset()
+ 				progress = int(math.Round(timeOffset / p.RunningTime * 100))
+@@ -706,6 +708,8 @@ func mainLoopRecord() {
+ 		}
+ 	}
+ 
++	overlays.HUDExportFinish()
++
+ 	goroutines.CallMain(func() {
+ 		ffmpeg.StopFFmpeg()
+ 	})
+diff --git a/app/beatmap/objects/timing.go b/app/beatmap/objects/timing.go
+index 34934ed..7207bb3 100644
+--- a/app/beatmap/objects/timing.go
++++ b/app/beatmap/objects/timing.go
+@@ -184,3 +184,11 @@ func (tim *Timings) Clear() {
+ func (tim *Timings) Reset() {
+ 	tim.Current = tim.points[0]
+ }
++
++// BPMPoints returns [time, base beat length] for every timing point (HUD export).
++func (tim *Timings) BPMPoints() (r [][2]float64) {
++	for _, p := range tim.points {
++		r = append(r, [2]float64{p.Time, p.GetBaseBeatLength()})
++	}
++	return
++}
+diff --git a/app/ffmpeg/audio.go b/app/ffmpeg/audio.go
+index df521fa..48d12e3 100644
+--- a/app/ffmpeg/audio.go
++++ b/app/ffmpeg/audio.go
+@@ -21,6 +21,7 @@ const MaxAudioBuffers = 2000
+ var cmdAudio *exec.Cmd
+ 
+ var audioPipe io.WriteCloser
++var pcmTee *os.File
+ 
+ var audioPool chan []byte
+ 
+@@ -103,8 +104,16 @@ func startAudio(audioFPS float64) {
+ 	endSyncAudio = &sync.WaitGroup{}
+ 	endSyncAudio.Add(1)
+ 
++	// Replay HUD: optional raw copy of the mixed audio (f32le, 48 kHz, stereo) for the compositor
++	if p := os.Getenv("DANSER_HUD_PCM"); p != "" {
++		pcmTee, _ = os.Create(p)
++	}
++
+ 	goroutines.RunOS(func() {
+ 		for data := range audioWriteQueue {
++			if pcmTee != nil {
++				_, _ = pcmTee.Write(data)
++			}
+ 			if _, err := audioPipe.Write(data); err != nil {
+ 				panic(fmt.Sprintf("ffmpeg's audio process finished abruptly! Please check if you have enough storage or audio parameters are entered correctly. Error: %s", err))
+ 			}
+@@ -123,6 +132,11 @@ func stopAudio() {
+ 
+ 	endSyncAudio.Wait()
+ 
++	if pcmTee != nil {
++		_ = pcmTee.Close()
++		pcmTee = nil
++	}
++
+ 	_ = audioPipe.Close()
+ 
+ 	log.Println("Audio pipe closed. Waiting for audio ffmpeg process to finish...")
+diff --git a/app/osuapi/structs.go b/app/osuapi/structs.go
+index 830e6ee..e58f4c5 100644
+--- a/app/osuapi/structs.go
++++ b/app/osuapi/structs.go
+@@ -1,5 +1,7 @@
+ package osuapi
+ 
++import "encoding/json"
++
+ type ScoresResult struct {
+ 	Scores []Score `json:"scores"`
+ }
+@@ -17,6 +19,7 @@ type Score struct {
+ 	ID                    int64   `json:"id"`
+ 	UserID                int64   `json:"user_id"`
+ 	Accuracy              float64 `json:"accuracy"`
++	PP                    *float64 `json:"pp"`
+ 	LegacyScoreID         int64   `json:"legacy_score_id"`
+ 	LegacyTotalScore      int64   `json:"legacy_total_score"`
+ 	MaxCombo              int64   `json:"max_combo"`
+@@ -24,6 +27,9 @@ type Score struct {
+ 	TotalScore            int64   `json:"total_score"`
+ 	User                  User    `json:"user"`
+ 	TotalScoreWithoutMods int64   `json:"total_score_without_mods,omitempty"`
++	Rank                  string           `json:"rank"`
++	Statistics            map[string]int64 `json:"statistics"`
++	Mods                  json.RawMessage  `json:"mods"`
+ }
+ 
+ type LookupResult struct {
+@@ -39,3 +45,21 @@ type Beatmapset struct {
+ 	ID     int64   `json:"id"`
+ 	Offset float64 `json:"offset"`
+ }
++
++type ScoreMod struct {
++	Acronym string `json:"acronym"`
++}
++
++// ModAcronyms decodes "mods" in either API shape: ["HD","DT"] or [{"acronym":"HD"},...].
++func (s Score) ModAcronyms() (r []string) {
++	if json.Unmarshal(s.Mods, &r) == nil {
++		return
++	}
++	var objs []ScoreMod
++	if json.Unmarshal(s.Mods, &objs) == nil {
++		for _, m := range objs {
++			r = append(r, m.Acronym)
++		}
++	}
++	return
++}
+diff --git a/app/states/components/overlays/hudexport.go b/app/states/components/overlays/hudexport.go
+new file mode 100644
+index 0000000..f93ac2b
+--- /dev/null
++++ b/app/states/components/overlays/hudexport.go
+@@ -0,0 +1,277 @@
++package overlays
++
++// HUD export: when DANSER_HUD_EXPORT is set (path to a .json file), a record run
++// dumps everything an external overlay needs to redraw the HUD frame-exactly:
++// static map/player meta, every judgement, every key change, and the map time of
++// every pushed video frame. The Replay HUD tool composites its overlay from it.
++
++import (
++	"encoding/json"
++	"log"
++	"os"
++	"math"
++	"path/filepath"
++
++	"github.com/wieku/danser-go/app/settings"
++	"github.com/wieku/danser-go/framework/bass"
++	"github.com/wieku/danser-go/app/beatmap/objects"
++	"github.com/wieku/danser-go/app/osuapi"
++	"github.com/wieku/danser-go/app/rulesets/osu"
++	"github.com/wieku/danser-go/app/rulesets/osu/performance"
++	"github.com/wieku/danser-go/app/rulesets/osu/performance/api"
++)
++
++type hudHit struct {
++	T      float64  `json:"t"`
++	Result string   `json:"r"`
++	Err    *float64 `json:"e,omitempty"`
++	Combo  uint     `json:"c"`
++	Max    uint     `json:"mc"`
++	Score  int64    `json:"s"`
++	Acc    float64  `json:"a"`
++	PP     float64  `json:"pp"`
++	FCPP   float64  `json:"fc"`
++	SSPP   float64  `json:"ss"`
++	Stars  float64  `json:"st"`
++	PX     *float64 `json:"px,omitempty"` // click offset from the circle centre, in radii
++	PY     *float64 `json:"py,omitempty"`
++	Ticks        uint `json:"tk"`
++	SliderEnd    uint `json:"se"`
++	MaxSliderEnd uint `json:"sem"`
++	UR     float64  `json:"ur"`
++	Grade  string   `json:"g"`
++	N300   uint     `json:"n3"`
++	N100   uint     `json:"n1"`
++	N50    uint     `json:"n5"`
++	NMiss  uint     `json:"nm"`
++	NSB    uint     `json:"nsb"`
++}
++
++type hudBoardEntry struct {
++	Name    string   `json:"name"`
++	UserID  int64    `json:"id"`
++	Avatar  string   `json:"avatar"`
++	Country string   `json:"country"`
++	Score   int64    `json:"score"`
++	Combo   int64    `json:"combo"`
++	Acc     float64  `json:"acc"`
++	PP      *float64 `json:"pp"`
++	Rank    string   `json:"rank"`
++	Misses  int64    `json:"misses"`
++	Mods    []string `json:"mods"`
++}
++
++type hudExportData struct {
++	Meta    map[string]any  `json:"meta"`
++	Strains api.StrainPeaks `json:"strains"`
++	BPM     [][2]float64    `json:"bpm"`
++	Breaks  [][2]float64    `json:"breaks"`
++	Board   []hudBoardEntry `json:"board"`
++	Hits    []hudHit        `json:"hits"`
++	Keys    [][2]float64    `json:"keys"` // [time, bitmask K1=1 K2=2 M1=4 M2=8]
++	Frames  []float64       `json:"frames"`
++	HP      []float32       `json:"hp"` // health 0..1, one per frame
++}
++
++var hudExport *hudExportData
++var hudOverlay *ScoreOverlay
++var hudKeys int
++
++func hudExportInit(overlay *ScoreOverlay) {
++	if os.Getenv("DANSER_HUD_EXPORT") == "" {
++		return
++	}
++
++	hudOverlay = overlay
++	bm := overlay.ruleset.GetBeatMap()
++	diff := overlay.ruleset.GetPlayerDifficulty(overlay.cursor)
++	end := overlay.ruleset.GetFinalDiffAttribs(overlay.cursor)
++	ss := performance.CreatePPCalculator().Calculate(end, api.PerfScore{CountGreat: -1, MaxCombo: -1, Accuracy: 1, SliderEnd: -1}, diff)
++
++	meta := map[string]any{
++		"player":    overlay.cursor.Name,
++		"mods":      diff.GetModString(),
++		"rate":      diff.GetSpeed(),
++		"artist":    bm.Artist,
++		"title":     bm.Name,
++		"version":   bm.Difficulty,
++		"creator":   bm.Creator,
++		"beatmapId": bm.ID,
++		"setId":     bm.SetID,
++		"md5":       bm.MD5,
++		"stars":     end.Total,
++		"maxPP":     ss.Total,
++		"maxCombo":  end.MaxCombo,
++		"start":     bm.HitObjects[0].GetStartTime(),
++		"end":       bm.HitObjects[len(bm.HitObjects)-1].GetEndTime(),
++		"objects":   len(bm.HitObjects),
++		"hit50":     diff.Hit50,
++		"hit100":    diff.Hit100,
++		"hit300":    diff.Hit300,
++		"ar":        diff.GetAR(),
++		"od":        diff.GetOD(),
++		"cs":        diff.GetCS(),
++		"hp":        diff.GetHP(),
++		"dir":       filepath.Join(settings.General.GetSongsDir(), bm.Dir),
++		"bg":        bm.Bg,
++		"audio":     bm.Audio,
++		"preview":   bm.PreviewTime,
++		"length":    bm.Length,
++		"tags":      bm.Tags,
++		"source":    bm.Source,
++		"circles":   bm.Circles,
++		"sliders":   bm.Sliders,
++		"spinners":  bm.Spinners,
++	}
++
++	if u, err := osuapi.LookupUser(overlay.cursor.Name); err == nil && u != nil {
++		meta["playerId"] = u.ID
++		meta["playerAvatar"] = u.AvatarURL
++		meta["playerCountry"] = u.CountryCode
++	}
++
++	hudExport = &hudExportData{
++		Meta:    meta,
++		Strains: performance.GetDifficultyCalculator().CalculateStrainPeaks(bm.HitObjects, bm.Diff),
++		BPM:     bm.Timings.BPMPoints(),
++		Hits:    []hudHit{},
++		Keys:    [][2]float64{},
++	}
++
++	// map music excerpt for the intro/results scenes (from the preview point)
++	if out := os.Getenv("DANSER_HUD_AUDIO"); out != "" && bm.Audio != "" {
++		start := float64(bm.PreviewTime) / 1000
++		if bm.PreviewTime <= 0 {
++			start = bm.HitObjects[len(bm.HitObjects)-1].GetEndTime() * 0.4 / 1000
++		}
++		if err := bass.DecodeToWAV(filepath.Join(settings.General.GetSongsDir(), bm.Dir, bm.Audio), start, 30, out); err != nil {
++			log.Println("HUD audio excerpt failed:", err)
++		}
++	}
++
++	for _, p := range bm.Pauses {
++		hudExport.Breaks = append(hudExport.Breaks, [2]float64{p.GetStartTime(), p.GetEndTime()})
++	}
++
++	for _, e := range overlay.entry.ScoresForExport() {
++		mods := e.ModAcronyms()
++		hudExport.Board = append(hudExport.Board, hudBoardEntry{
++			Name: e.User.Username, UserID: e.User.ID, Avatar: e.User.AvatarURL, Country: e.User.CountryCode,
++			Score: max(e.LegacyTotalScore, e.ClassicTotalScore, e.TotalScore, e.Score), Combo: e.MaxCombo, Acc: e.Accuracy * 100, PP: e.PP,
++			Rank: e.Rank, Misses: e.Statistics["miss"], Mods: mods,
++		})
++	}
++}
++
++func hudExportHit(overlay *ScoreOverlay, res osu.JudgementResult) {
++	if hudExport == nil || overlay != hudOverlay || res.HitResult == osu.PositionalMiss {
++		return
++	}
++
++	// timing error: circle hits and slider heads, like the hit error meter
++	var err *float64
++	obj := overlay.ruleset.GetBeatMap().HitObjects[res.Number]
++	_, isCircle := obj.(*objects.Circle)
++	if (isCircle && res.HitResult&osu.BaseHits > 0) || (!isCircle && res.HitResult&osu.SliderStart > 0) {
++		d := float64(res.Time) - obj.GetStartTime()
++		err = &d
++	}
++
++	sc := overlay.ruleset.GetScore(overlay.cursor)
++
++	var px, py *float64
++	if err != nil {
++		bm := overlay.ruleset.GetBeatMap()
++		c := bm.HitObjects[res.Number].GetStackedStartPositionMod(bm.Diff)
++		r := bm.Diff.CircleRadius
++		p := overlay.cursor.Position
++		dx, dy := (float64(p.X)-float64(c.X))/r, (float64(p.Y)-float64(c.Y))/r
++		// express the offset along the movement direction (previous object -> this one):
++		// px > 0 = overshoot, py = sideways. First object: raw screen axes.
++		x, y := dx, dy
++		if res.Number > 0 {
++			prev := bm.HitObjects[res.Number-1].GetStackedEndPositionMod(bm.Diff)
++			mx, my := float64(c.X)-float64(prev.X), float64(c.Y)-float64(prev.Y)
++			if l := math.Hypot(mx, my); l > 1 {
++				mx, my = mx/l, my/l
++				x, y = dx*mx+dy*my, dy*mx-dx*my
++			}
++		}
++		px, py = &x, &y
++	}
++
++	hudExport.Hits = append(hudExport.Hits, hudHit{
++		PX: px, PY: py, Ticks: sc.MaxTicks, SliderEnd: sc.SliderEnd, MaxSliderEnd: sc.MaxSliderEnd,
++		T: float64(res.Time), Result: hitName(res.HitResult), Err: err,
++		Combo: sc.CurrentCombo, Max: sc.Combo, Score: sc.Score, Acc: sc.Accuracy * 100,
++		PP: sc.PP.Total, FCPP: overlay.ruleset.GetFCPP(overlay.cursor).Total, SSPP: overlay.ruleset.GetSSPP(overlay.cursor).Total,
++		Stars: overlay.ruleset.GetCurrentDiffAttribs(overlay.cursor).Total,
++		UR:    overlay.hitErrorMeter.GetUnstableRateConverted(), Grade: sc.Grade.TextureName(),
++		N300: sc.Count300, N100: sc.Count100, N50: sc.Count50, NMiss: sc.CountMiss, NSB: sc.CountSB,
++	})
++}
++
++func hitName(r osu.HitResult) string {
++	switch {
++	case r&osu.Hit300 > 0:
++		return "300"
++	case r&osu.Hit100 > 0:
++		return "100"
++	case r&osu.Hit50 > 0:
++		return "50"
++	case r&osu.Miss > 0:
++		return "miss"
++	case r&osu.PositionalMiss > 0:
++		return "pmiss"
++	case r&osu.SliderMiss > 0:
++		return "sb"
++	}
++	return "tick"
++}
++
++func hudExportKeys(overlay *ScoreOverlay, actions ...osu.ButtonAction) {
++	if hudExport == nil || overlay != hudOverlay {
++		return
++	}
++
++	mask := hudKeys
++	for i, a := range actions {
++		if a&osu.Clicked > 0 {
++			mask |= 1 << i
++		}
++		if a&osu.Released > 0 {
++			mask &^= 1 << i
++		}
++	}
++
++	if mask != hudKeys {
++		hudKeys = mask
++		hudExport.Keys = append(hudExport.Keys, [2]float64{overlay.audioTime, float64(mask)})
++	}
++}
++
++// HUDExportFrame is called by the record loop once per pushed frame.
++func HUDExportFrame() {
++	if hudExport != nil && hudOverlay != nil {
++		hudExport.Frames = append(hudExport.Frames, hudOverlay.audioTime)
++		hudExport.HP = append(hudExport.HP, float32(hudOverlay.ruleset.GetHP(hudOverlay.cursor)))
++	}
++}
++
++// HUDExportFinish writes the collected data; called when recording stops.
++func HUDExportFinish() {
++	if hudExport == nil {
++		return
++	}
++
++	data, err := json.Marshal(hudExport)
++	if err == nil {
++		err = os.WriteFile(os.Getenv("DANSER_HUD_EXPORT"), data, 0644)
++	}
++
++	if err != nil {
++		log.Println("HUD export failed:", err)
++	} else {
++		log.Println("HUD export written:", len(hudExport.Frames), "frames,", len(hudExport.Hits), "hits")
++	}
++}
+diff --git a/app/states/components/overlays/play/scoreboard.go b/app/states/components/overlays/play/scoreboard.go
+index 9fd7faa..d6ae7f8 100644
+--- a/app/states/components/overlays/play/scoreboard.go
++++ b/app/states/components/overlays/play/scoreboard.go
+@@ -292,3 +292,13 @@ func (board *ScoreBoard) Draw(batch *batch.QuadBatch, alpha float64) {
+ 	board.explosionManager.Draw(board.time, batch)
+ 	batch.SetScale(1, 1)
+ }
++
++// ScoresForExport returns the online scores (player excluded) for the HUD export.
++func (board *ScoreBoard) ScoresForExport() (r []osuapi.Score) {
++	for _, e := range board.scores {
++		if e != board.playerEntry {
++			r = append(r, e.score)
++		}
++	}
++	return
++}
+diff --git a/app/states/components/overlays/scoreoverlay.go b/app/states/components/overlays/scoreoverlay.go
+index 27b8ea7..3b9f8c7 100644
+--- a/app/states/components/overlays/scoreoverlay.go
++++ b/app/states/components/overlays/scoreoverlay.go
+@@ -345,6 +345,8 @@ func NewScoreOverlay(ruleset *osu.OsuRuleSet, cursor *graphics.Cursor) *ScoreOve
+ 	overlay.customStats.GetStatHolder().SetStars(endStars)
+ 	overlay.customStats.GetStatHolder().SetCurrentStars(currentStars)
+ 
++	hudExportInit(overlay)
++
+ 	return overlay
+ }
+ 
+@@ -380,6 +382,8 @@ func (overlay *ScoreOverlay) initUnderlay() {
+ }
+ 
+ func (overlay *ScoreOverlay) hitReceived(c *graphics.Cursor, judgementResult osu.JudgementResult, score osu.Score) {
++	defer hudExportHit(overlay, judgementResult)
++
+ 	object := overlay.ruleset.GetBeatMap().HitObjects[judgementResult.Number]
+ 
+ 	if judgementResult.HitResult&(osu.BaseHitsM) > 0 {
+@@ -471,6 +475,9 @@ func (overlay *ScoreOverlay) hitReceived(c *graphics.Cursor, judgementResult osu
+ }
+ 
+ func (overlay *ScoreOverlay) clickReceived(c *graphics.Cursor, leftMouse, rightMouse, leftKb, rightKb, smoke osu.ButtonAction) {
++	if c == overlay.cursor {
++		hudExportKeys(overlay, leftKb, rightKb, leftMouse, rightMouse)
++	}
+ 	if (leftMouse|rightMouse|leftKb|rightKb)&(osu.Clicked) > 0 {
+ 		overlay.customStats.GetStatHolder().AddClick(overlay.audioTime)
+ 	}
+diff --git a/framework/bass/decode.go b/framework/bass/decode.go
+new file mode 100644
+index 0000000..2a48771
+--- /dev/null
++++ b/framework/bass/decode.go
+@@ -0,0 +1,71 @@
++package bass
++
++/*
++#include "bass.h"
++*/
++import "C"
++
++import (
++	"encoding/binary"
++	"errors"
++	"os"
++	"unicode/utf16"
++	"unsafe"
++)
++
++// DecodeToWAV decodes [start, start+dur) seconds of an audio file to a 32-bit float WAV.
++// Used by the Replay HUD export: danser's bundled ffmpeg cannot decode mp3/ogg itself.
++func DecodeToWAV(path string, start, dur float64, out string) error {
++	wFile := append(utf16.Encode([]rune(path)), 0)
++	h := C.BASS_StreamCreateFile(0, unsafe.Pointer(&wFile[0]), 0, 0, C.DWORD(C.BASS_STREAM_DECODE|C.BASS_SAMPLE_FLOAT|C.BASS_STREAM_PRESCAN|C.BASS_UNICODE))
++	if h == 0 {
++		return errors.New("BASS cannot open the audio file")
++	}
++	defer C.BASS_StreamFree(h)
++
++	var info C.BASS_CHANNELINFO
++	C.BASS_ChannelGetInfo(C.DWORD(h), &info)
++	freq, chans := int(info.freq), int(info.chans)
++
++	length := float64(C.BASS_ChannelBytes2Seconds(C.DWORD(h), C.BASS_ChannelGetLength(C.DWORD(h), C.BASS_POS_BYTE)))
++	if start+dur > length {
++		start = max(0, length-dur)
++	}
++	C.BASS_ChannelSetPosition(C.DWORD(h), C.BASS_ChannelSeconds2Bytes(C.DWORD(h), C.double(start)), C.BASS_POS_BYTE)
++
++	want := int(dur*float64(freq)) * chans * 4
++	data := make([]byte, 0, want)
++	buf := make([]byte, 65536)
++	for len(data) < want {
++		n := int32(C.BASS_ChannelGetData(C.DWORD(h), unsafe.Pointer(&buf[0]), C.DWORD(min(len(buf), want-len(data)))))
++		if n <= 0 {
++			break
++		}
++		data = append(data, buf[:n]...)
++	}
++
++	f, err := os.Create(out)
++	if err != nil {
++		return err
++	}
++	defer f.Close()
++
++	hdr := make([]byte, 44)
++	copy(hdr[0:], "RIFF")
++	binary.LittleEndian.PutUint32(hdr[4:], uint32(36+len(data)))
++	copy(hdr[8:], "WAVEfmt ")
++	binary.LittleEndian.PutUint32(hdr[16:], 16)
++	binary.LittleEndian.PutUint16(hdr[20:], 3) // IEEE float
++	binary.LittleEndian.PutUint16(hdr[22:], uint16(chans))
++	binary.LittleEndian.PutUint32(hdr[24:], uint32(freq))
++	binary.LittleEndian.PutUint32(hdr[28:], uint32(freq*chans*4))
++	binary.LittleEndian.PutUint16(hdr[32:], uint16(chans*4))
++	binary.LittleEndian.PutUint16(hdr[34:], 32)
++	copy(hdr[36:], "data")
++	binary.LittleEndian.PutUint32(hdr[40:], uint32(len(data)))
++
++	if _, err = f.Write(hdr); err == nil {
++		_, err = f.Write(data)
++	}
++	return err
++}

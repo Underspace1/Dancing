@@ -1,0 +1,7 @@
+Usecase: ingame, obs-overlay
+Name: PP Gauge
+Version: 2.0
+Author: Dancing!
+CompatibleWith: tosu
+Resolution: 260x96
+Glass: 14

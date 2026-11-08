@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Dancing! Strain Graph</title><style>
+:root { --accent: #8fe39a; }
+@font-face { font-family: Nunito; font-weight: 600 900; src: local('Nunito'), url('/fonts/nunito-latin-800-normal.woff2'), url('/Replay%20HUD%202/fonts/nunito-800.woff2'); }
+html, body { margin: 0; width: 320px; height: 112px; background: transparent; overflow: hidden; }
+* { box-sizing: border-box; }
+.w { position: relative; width: 320px; height: 112px; border-radius: 14px; color: #fff; overflow: hidden;
+  background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.03) 55%, rgba(255,255,255,.07)), rgba(14,14,20,.34);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 1px rgba(255,255,255,.12), inset 0 -18px 30px -24px rgba(0,0,0,.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6);
+  font-family: Nunito, 'Segoe UI', sans-serif; text-shadow: 0 1px 8px rgba(0,0,0,.35); animation: in .7s cubic-bezier(.2,.9,.25,1.15) both; }
+.w::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.14), transparent 45%); }
+.lbl { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+.num { font-weight: 900; font-variant-numeric: tabular-nums; display: inline-block; }
+.kick { animation: kick .32s cubic-bezier(.3,1.6,.5,1); }
+@keyframes kick { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-2px) scale(1.08); } 100% { transform: none; } }
+@keyframes in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+
+
+canvas { position: absolute; left: 12px; top: 10px; }
+.leg { position: absolute; left: 14px; bottom: 9px; display: flex; gap: 12px; }
+.leg i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 5px; vertical-align: 2px; }
+.pct { position: absolute; right: 14px; bottom: 7px; font-size: 13px; }</style></head>
+<body><div class="w"><canvas id="c" width="592" height="148" style="width:296px;height:74px"></canvas><div class="leg lbl"><span><i style="background:var(--accent)"></i>aim</span><span><i style="background:#f4f4f6"></i>speed</span></div><div class="pct num" id="pct">0 %</div></div>
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+// Smoothly rolling numbers + a short "kick" when the value goes up.
+const nums = new Map();
+function roll(el, target, digits = 0, speed = 14) {
+  let s = nums.get(el); if (!s) { s = { v: target, t: target }; nums.set(el, s); }
+  if (target !== s.t) { if (target > s.t) { el.classList.remove('kick'); void el.offsetWidth; el.classList.add('kick'); } s.t = target; }
+  s.speed = speed; s.digits = digits;
+}
+let last = 0;
+function frame(ts) {
+  const dt = Math.min(0.1, (ts - last) / 1000 || 0); last = ts;
+  for (const [el, s] of nums) { s.v += (s.t - s.v) * (1 - Math.exp(-s.speed * dt)); if (Math.abs(s.t - s.v) < 0.5 / 10 ** s.digits) s.v = s.t; el.textContent = s.digits ? s.v.toFixed(s.digits) : fmt(s.v); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// ?demo : fake play for the Dancing! store preview (no tosu needed).
+const G = { aim: Array.from({ length: 57 }, (_, i) => 60 + 40 * Math.sin(i / 5) ** 2 + 30 * Math.random()), speed: Array.from({ length: 57 }, (_, i) => 40 + 50 * Math.cos(i / 7) ** 2 + 20 * Math.random()) }, E = [];
+function demo(onData) {
+  let t = 0, combo = 0, max = 0, h = { '300': 0, '100': 0, '50': 0, '0': 0 }, k1 = 0, k2 = 0, lane = 0;
+  setInterval(() => {
+    t += 120; const r = Math.random();
+    if (r < 0.02) { h['0']++; combo = 0; } else { r < 0.07 ? h['100']++ : r < 0.075 ? h['50']++ : h['300']++; combo++; max = Math.max(max, combo); }
+    lane ? k2++ : k1++; lane ^= 1;
+    const n = h['300'] + h['100'] + h['50'] + h['0'], acc = n ? (300 * h['300'] + 100 * h['100'] + 50 * h['50']) / (3 * n) : 100;
+    onData({ beatmap: { title: 'over the top', artist: 'xi', version: 'interstellar dimensions', stats: { stars: { total: 7.84, live: 7.84 }, cs: { converted: 4 }, ar: { converted: 10 }, od: { converted: 10 }, hp: { converted: 5 }, bpm: { realtime: 220 }, hitWindow: { great: 19.5, ok: 59.5, meh: 99.5 } }, time: { firstObject: 0, lastObject: 228000, live: t * 4 % 228000 } },
+      play: { hitErrorArray: (E.push((Math.random() - .45) * 40), E.splice(0, E.length - 40), E), unstableRate: 70 + 30 * Math.random(), pp: { current: Math.min(486, t / 60), fc: 486 }, hits: { ...h, sliderBreaks: h['0'] ? 1 : 0 }, combo: { current: combo, max }, rank: { current: acc > 98 ? 'SS' : acc > 95 ? 'S' : 'A' } },
+      performance: { graph: { series: [{ name: 'aim', data: G.aim }, { name: 'speed', data: G.speed }], xaxis: G.aim.map((_, i) => i * 4000) } },
+      keys: { k1: { isPressed: !lane, count: k1 }, k2: { isPressed: !!lane, count: k2 } } });
+  }, 120);
+}
+function connect(url, onData) {
+  if (location.search.includes('demo')) return demo(onData);
+  const ws = new WebSocket(url);
+  ws.onmessage = e => { try { onData(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => setTimeout(() => connect(url, onData), 1000);
+}
+const host = location.host || '127.0.0.1:24050';
+</script><script>const c = $('#c'), g = c.getContext('2d'), accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+function area(data, max, col, alpha, upto) {
+  const n = data.length; if (n < 2) return; const W = c.width, H = c.height, x = i => i / (n - 1) * W, y = v => H - v / max * (H - 6);
+  const shape = () => { g.beginPath(); g.moveTo(0, H); data.forEach((v, i) => g.lineTo(x(i), y(v))); g.lineTo(W, H); g.closePath(); };
+  g.save(); g.beginPath(); g.rect(0, 0, upto * W, H); g.clip(); shape(); g.globalAlpha = alpha; g.fillStyle = col; g.fill(); g.restore();
+  g.save(); g.beginPath(); g.rect(upto * W, 0, W, H); g.clip(); shape(); g.globalAlpha = .16; g.fillStyle = col; g.fill(); g.restore();
+}
+function update(d) {
+  const s = d.performance?.graph?.series || [], aim = s.find(x => x.name === 'aim')?.data || [], speed = s.find(x => x.name === 'speed')?.data || [];
+  const tm = d.beatmap?.time || {}, p = Math.max(0, Math.min(1, ((tm.live || 0) - (tm.firstObject || 0)) / Math.max(1, (tm.lastObject || 1) - (tm.firstObject || 0))));
+  const max = Math.max(1, ...aim, ...speed); g.clearRect(0, 0, c.width, c.height);
+  area(aim, max, accent, .75, p); area(speed, max, '#f4f4f6', .5, p);
+  g.fillStyle = '#fff'; g.fillRect(p * c.width - 1.5, 0, 3, c.height);
+  $('#pct').textContent = Math.round(p * 100) + ' %';
+}
+connect('ws://' + host + '/websocket/v2', d => update(d));</script></body></html>

@@ -1,0 +1,26 @@
+# Données personnelles et rendus
+data/
+videos/
+cache/
+
+# Clé osu! livrée dans l'installateur : jamais dans le dépôt public
+assets/osu-client.json
+
+# Builds et dépendances (l'installateur va dans les Releases GitHub)
+dist/
+node_modules/
+app/target/
+app/headless/
+*.exe
+*.zip
+
+# Anciennes versions et sauvegardes
+*.avant-*
+*.before-*
+*.bak
+
+# Exports vidéo de la pub (lourds)
+pub/export/
+
+# Notes de travail internes (chemins personnels)
+HANDOFF.md

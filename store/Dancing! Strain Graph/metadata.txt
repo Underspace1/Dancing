@@ -1,0 +1,7 @@
+Usecase: ingame, obs-overlay
+Name: Strain Graph
+Version: 2.0
+Author: Dancing!
+CompatibleWith: tosu
+Resolution: 320x112
+Glass: 14

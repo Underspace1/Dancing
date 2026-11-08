@@ -1,0 +1,7 @@
+Usecase: ingame, obs-overlay
+Name: Map Stats
+Version: 2.0
+Author: Dancing!
+CompatibleWith: tosu
+Resolution: 520x84
+Glass: 14

@@ -1,0 +1,7 @@
+Usecase: ingame, obs-overlay
+Name: UR Bar
+Version: 2.0
+Author: Dancing!
+CompatibleWith: tosu
+Resolution: 380x96
+Glass: 14

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Dancing! Hit Ladder</title><style>
+:root { --accent: #5ab8ff; }
+@font-face { font-family: Nunito; font-weight: 600 900; src: local('Nunito'), url('/fonts/nunito-latin-800-normal.woff2'), url('/Replay%20HUD%202/fonts/nunito-800.woff2'); }
+html, body { margin: 0; width: 380px; height: 72px; background: transparent; overflow: hidden; }
+* { box-sizing: border-box; }
+.w { position: relative; width: 380px; height: 72px; border-radius: 14px; color: #fff; overflow: hidden;
+  background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.03) 55%, rgba(255,255,255,.07)), rgba(14,14,20,.34);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 1px rgba(255,255,255,.12), inset 0 -18px 30px -24px rgba(0,0,0,.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6);
+  font-family: Nunito, 'Segoe UI', sans-serif; text-shadow: 0 1px 8px rgba(0,0,0,.35); animation: in .7s cubic-bezier(.2,.9,.25,1.15) both; }
+.w::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.14), transparent 45%); }
+.lbl { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+.num { font-weight: 900; font-variant-numeric: tabular-nums; display: inline-block; }
+.kick { animation: kick .32s cubic-bezier(.3,1.6,.5,1); }
+@keyframes kick { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-2px) scale(1.08); } 100% { transform: none; } }
+@keyframes in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+
+.cells { display: grid; grid-template-columns: repeat(4, 1fr); height: 100%; }
+.c { position: relative; padding: 12px 12px 0; }
+.c::before { content: ''; position: absolute; left: 10px; right: 10px; top: 0; height: 3px; background: var(--c); transform-origin: left; animation: grow .6s .2s cubic-bezier(.2,.9,.3,1) both; }
+.c .num { font-size: 22px; }
+.c .lbl { color: var(--c); margin-top: 3px; }
+.flash::before { animation: flash .45s ease-out; }
+@keyframes grow { from { transform: scaleX(0); } }
+@keyframes flash { 0% { filter: brightness(2.2); height: 6px; } 100% { filter: none; height: 3px; } }</style></head>
+<body><div class="w"><div class="cells">
+<div class="c" style="--c:#5ab8ff"><span class="num" id="h300">0</span><div class="lbl">300</div></div>
+<div class="c" style="--c:#6fe39a"><span class="num" id="h100">0</span><div class="lbl">100</div></div>
+<div class="c" style="--c:#ffd84b"><span class="num" id="h50">0</span><div class="lbl">50</div></div>
+<div class="c" style="--c:#ff6b74"><span class="num" id="h0">0</span><div class="lbl">miss</div></div></div></div>
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+// Smoothly rolling numbers + a short "kick" when the value goes up.
+const nums = new Map();
+function roll(el, target, digits = 0, speed = 14) {
+  let s = nums.get(el); if (!s) { s = { v: target, t: target }; nums.set(el, s); }
+  if (target !== s.t) { if (target > s.t) { el.classList.remove('kick'); void el.offsetWidth; el.classList.add('kick'); } s.t = target; }
+  s.speed = speed; s.digits = digits;
+}
+let last = 0;
+function frame(ts) {
+  const dt = Math.min(0.1, (ts - last) / 1000 || 0); last = ts;
+  for (const [el, s] of nums) { s.v += (s.t - s.v) * (1 - Math.exp(-s.speed * dt)); if (Math.abs(s.t - s.v) < 0.5 / 10 ** s.digits) s.v = s.t; el.textContent = s.digits ? s.v.toFixed(s.digits) : fmt(s.v); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// ?demo : fake play for the Dancing! store preview (no tosu needed).
+function demo(onData) {
+  let t = 0, combo = 0, max = 0, h = { '300': 0, '100': 0, '50': 0, '0': 0 }, k1 = 0, k2 = 0, lane = 0;
+  setInterval(() => {
+    t += 120; const r = Math.random();
+    if (r < 0.02) { h['0']++; combo = 0; } else { r < 0.07 ? h['100']++ : r < 0.075 ? h['50']++ : h['300']++; combo++; max = Math.max(max, combo); }
+    lane ? k2++ : k1++; lane ^= 1;
+    const n = h['300'] + h['100'] + h['50'] + h['0'], acc = n ? (300 * h['300'] + 100 * h['100'] + 50 * h['50']) / (3 * n) : 100;
+    onData({ beatmap: { title: 'over the top', artist: 'xi', version: 'interstellar dimensions', stats: { stars: { total: 7.84 } }, time: { firstObject: 0, lastObject: 228000, live: t * 4 % 228000 } },
+      play: { pp: { current: Math.min(486, t / 60), fc: 486 }, hits: h, combo: { current: combo, max }, rank: { current: acc > 98 ? 'SS' : acc > 95 ? 'S' : 'A' } },
+      keys: { k1: { isPressed: !lane, count: k1 }, k2: { isPressed: !!lane, count: k2 } } });
+  }, 120);
+}
+function connect(url, onData) {
+  if (location.search.includes('demo')) return demo(onData);
+  const ws = new WebSocket(url);
+  ws.onmessage = e => { try { onData(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => setTimeout(() => connect(url, onData), 1000);
+}
+const host = location.host || '127.0.0.1:24050';
+</script><script>const prev = {};
+function update(d) {
+  const h = d.play?.hits || {};
+  for (const k of ['300', '100', '50', '0']) {
+    const v = h[k] || 0, el = $('#h' + k);
+    if (prev[k] !== undefined && v > prev[k] && k !== '300') { const c = el.parentNode; c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
+    prev[k] = v; roll(el, v, 0, 18);
+  }
+}
+connect('ws://' + host + '/websocket/v2', d => update(d));</script></body></html>
