@@ -42,19 +42,30 @@ export function toVideoTime(mapMs, frames, { oversample = 1, fps = 60, intro = 0
 // cards : { intro, outro } = fichiers RGBA bruts 1080x1920 (une image chacun, voir drawClipCard). Le clip s'ouvre alors
 // sur sa première image floutée qui sort du noir avec la carte de la map, et se ferme sur la dernière image floutée,
 // la carte du score puis le noir. Le son (copié tel quel, le ffmpeg fourni ne décode pas l'AAC) est décalé d'autant.
+// overlay : false = recadre sur le terrain de jeu, hors des zones de l'overlay (bandeau y<135, barre d'erreur y>965,
+// classement x<420, touches x>1560 sur 1920x1080). background : fichier RGBA brut 1080x1920 (fond de la map flouté)
+// à la place de la vidéo floutée.
 export const CARD_IN = 2.6, CARD_OUT = 2.8;
-export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null }) {
-  const dur = Math.max(0.5, end - start);
-  const fg = layout === 'zoom' ? 'crop=iw*0.62:ih,scale=1080:-2' : 'scale=1080:-2';
-  const vert = `[0:v]fps=60,split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2[bg];[b]${fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1`;
+const PLAYFIELD = 'crop=iw*0.5885:ih*0.7593:iw*0.2214:ih*0.1296';
+export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null, overlay = true, background = null }) {
+  const dur = Math.max(0.5, end - start), f = n => n.toFixed(3);
+  const I = cards ? CARD_IN : 0, O = cards ? CARD_OUT : 0, T = I + dur + O;
+  const fg = !overlay ? `${PLAYFIELD},scale=1080:-2` : layout === 'zoom' ? 'crop=iw*0.62:ih,scale=1080:-2' : 'scale=1080:-2';
+  const raw = file => ['-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', '1080x1920', '-framerate', '60', '-i', file];
+  const bgIdx = cards ? 4 : 1;   // entrées : 0 vidéo, [1 intro, 2 fin, 3 son décalé], puis le fond
+  // intro/fin : la vidéo du jeu est prolongée (première et dernière image) avant d'être posée sur le fond
+  const pad = cards ? `,tpad=start_duration=${f(I)}:start_mode=clone:stop_duration=${f(O)}:stop_mode=clone` : '';
+  // fond de la map : le jeu est fusionné en « éclaircir » (le fond sombre de danser laisse voir l'image de la map,
+  // les cercles et le curseur passent par-dessus), sans bande noire autour du terrain
+  const vert = background
+    ? `[${bgIdx}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(T)},format=gbrp[bg];[0:v]fps=60,${fg}${pad},pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,format=gbrp[fg];[bg][fg]blend=all_mode=lighten:shortest=1,format=yuv420p,setsar=1`
+    : `[0:v]fps=60,split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2[bg];[b]${fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1${pad}`;
   const enc = /nvenc/.test(encoder) ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20', '-b:v', '0'] : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];
-  const src = ['-ss', start.toFixed(3), '-t', dur.toFixed(3)];
-  if (!cards) return ['-hide_banner', '-y', ...src, '-i', input, '-filter_complex', `${vert},format=yuv420p[v]`, '-map', '[v]', '-map', '0:a?', ...enc, '-c:a', 'copy', '-movflags', '+faststart', output];
-  const I = CARD_IN, O = CARD_OUT, T = I + dur + O, f = n => n.toFixed(3);
-  const raw = file => ['-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', '1080x1920', '-i', file];
+  const src = ['-ss', start.toFixed(3), '-t', dur.toFixed(3)], bgIn = background ? raw(background) : [];
+  if (!cards) return ['-hide_banner', '-y', ...src, '-i', input, ...bgIn, '-filter_complex', `${vert},format=yuv420p[v]`, '-map', '[v]', '-map', '0:a?', ...enc, '-c:a', 'copy', '-movflags', '+faststart', output];
   const card = (k, d) => `[${k}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(d)},format=rgba`;
   const filter = [
-    `${vert},tpad=start_duration=${f(I)}:start_mode=clone:stop_duration=${f(O)}:stop_mode=clone[base]`,
+    `${vert}[base]`,
     // deux calques flous, seulement sur l'intro et la fin (un seul fondu par calque : un fondu « in » rend le calque transparent avant son début)
     `[base]split=3[sharp][s1][s2];[s1]trim=end=${f(I)},boxblur=luma_radius=30:luma_power=3:chroma_radius=15:alpha_radius=0,format=yuva420p,fade=t=out:st=${f(I - 0.5)}:d=0.5:alpha=1[b1];[s2]trim=start=${f(I + dur)},boxblur=luma_radius=30:luma_power=3:chroma_radius=15:alpha_radius=0,format=yuva420p,fade=t=in:st=${f(I + dur)}:d=0.5:alpha=1[b2]`,
     `[sharp][b1]overlay=eof_action=pass[x1];[x1][b2]overlay=eof_action=pass[mix]`,
@@ -64,7 +75,7 @@ export function clipArgs({ input, output, start, end, layout = 'full', encoder =
     `[m1][co]overlay=eof_action=pass[m2]`,
     `[m2]fade=t=in:st=0:d=0.7,fade=t=out:st=${f(T - 0.8)}:d=0.8,format=yuv420p[v]`,
   ].join(';');
-  return ['-hide_banner', '-y', ...src, '-i', input, ...raw(cards.intro), ...raw(cards.outro), ...src, '-itsoffset', f(I), '-i', input,
+  return ['-hide_banner', '-y', ...src, '-i', input, ...raw(cards.intro), ...raw(cards.outro), ...src, '-itsoffset', f(I), '-i', input, ...bgIn,
     '-filter_complex', filter, '-map', '[v]', '-map', '3:a?', '-t', f(T), ...enc, '-c:a', 'copy', '-movflags', '+faststart', output];
 }
 
@@ -110,4 +121,11 @@ export function drawClipCard(g, kind, info = {}) {
     g.fillText(fit([info.player, mods, info.rank ? `#${info.rank} sur ${info.of} au classement` : null].filter(Boolean).join('  ·  '), w - 90), cx, y + 720);
   }
   g.font = F(800, 30); g.fillStyle = 'rgba(255,255,255,.55)'; g.fillText('Dancing!', cx, 1820);
+}
+
+// Fond des clips verticaux : l'image de la map en plein cadre, floutée et un peu assombrie.
+export function drawClipBackground(g, img, { blur = 26, dim = 0.38 } = {}) {
+  const W = 1080, H = 1920; g.clearRect(0, 0, W, H); g.fillStyle = '#0b0b0e'; g.fillRect(0, 0, W, H);
+  if (img) { const s = Math.max(W / img.width, H / img.height) * 1.08; g.filter = `blur(${blur}px)`; g.drawImage(img, (W - img.width * s) / 2, (H - img.height * s) / 2, img.width * s, img.height * s); g.filter = 'none'; }
+  g.fillStyle = `rgba(0,0,0,${dim})`; g.fillRect(0, 0, W, H);
 }

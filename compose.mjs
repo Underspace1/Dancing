@@ -312,7 +312,7 @@ async function main() {
     // seulement les moments filmés (un aperçu ne couvre que 12 s de la map)
     const moments = findMoments(data.hits || []).filter(x => x.start >= f0 && x.end <= f1 + 50).map(x => ({ start: +tv(x.start).toFixed(2), end: +tv(x.end).toFixed(2), label: x.label }));
     // infos de la map et du score pour les cartes d'intro et de fin des clips verticaux
-    const info = { title: meta.title, artist: meta.artist, version: meta.version, creator: meta.creator, stars: meta.stars, cs: meta.cs, ar: meta.ar, od: meta.od, hp: meta.hp, bpm: tl.at(meta.start).bpm,
+    const info = { bg: meta.dir && meta.bg ? path.join(meta.dir, meta.bg) : null, title: meta.title, artist: meta.artist, version: meta.version, creator: meta.creator, stars: meta.stars, cs: meta.cs, ar: meta.ar, od: meta.od, hp: meta.hp, bpm: tl.at(meta.start).bpm,
       player: meta.player, mods: modList(meta.mods), score: sm.score, acc: sm.acc, pp: sm.pp, grade: sm.grade, combo: sm.maxCombo, maxCombo: meta.maxCombo, miss: sm.nmiss, n100: sm.n100, n50: sm.n50, rank: sm.of > 1 ? sm.rank : null, of: sm.of };
     fs.writeFileSync(job.out + '.moments.json', JSON.stringify({ moments, info }));
   } catch { }

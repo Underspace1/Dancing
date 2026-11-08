@@ -12,8 +12,8 @@ import { demoData } from './web/demo-data.js';
 import { BUILTIN, dancingPresets } from './web/presets.js';
 import { maniaData } from './mania.mjs';
 import { DatabaseSync } from 'node:sqlite';
-import { clipArgs, drawClipCard } from './clips.mjs';
-import { createCanvas } from '@napi-rs/canvas';
+import { clipArgs, drawClipCard, drawClipBackground } from './clips.mjs';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 import os from 'node:os';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -478,16 +478,16 @@ http.createServer(async (req, res) => {
         const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(11, 19), outName = path.basename(src, path.extname(src)).slice(0, 80) + ' (TikTok ' + stamp + ').mp4';
         const enc = app.danser?.Recording?.Encoder || danserBase().Recording?.Encoder || 'libx264';
         // cartes d'intro et de fin (infos de la map et du score enregistrées avec la vidéo au rendu)
-        const info = input.cards === false ? null : readJSON(src + '.moments.json')?.info;
-        let cards = null, tmp = null;
-        if (info) {
-          tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dancing-clip-')); cards = { intro: path.join(tmp, 'intro.rgba'), outro: path.join(tmp, 'outro.rgba') };
-          const c = createCanvas(1080, 1920), g = c.getContext('2d');
-          for (const k of ['intro', 'outro']) { drawClipCard(g, k, info); fs.writeFileSync(cards[k], Buffer.from(g.getImageData(0, 0, 1080, 1920).data.buffer)); }
-        }
-        try { await new Promise((ok, ko) => execFile(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards }), { windowsHide: true, timeout: 600000, maxBuffer: 1 << 24 }, (e, o, er) => e ? ko(Error('ffmpeg : ' + String(er).trim().split(/\r?\n/).slice(-2).join(' '))) : ok())); }
-        finally { if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); }
-        return send(res, 200, { ok: true, name: outName, cards: !!cards });
+        const info = readJSON(src + '.moments.json')?.info;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dancing-clip-')), c = createCanvas(1080, 1920), g = c.getContext('2d');
+        const dump = name => { const f = path.join(tmp, name); fs.writeFileSync(f, Buffer.from(g.getImageData(0, 0, 1080, 1920).data.buffer)); return f; };
+        let cards = null, background = null;
+        if (info && input.cards !== false) cards = Object.fromEntries(['intro', 'outro'].map(k => { drawClipCard(g, k, info); return [k, dump(k + '.rgba')]; }));
+        // fond = image de la map floutée (sinon la vidéo floutée, pour les vidéos d'avant la 3.1.1)
+        if (input.bg !== 'video' && info?.bg && fs.existsSync(info.bg)) { try { drawClipBackground(g, await loadImage(info.bg)); background = dump('bg.rgba'); } catch { } }
+        try { await new Promise((ok, ko) => execFile(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards, background, overlay: input.overlay !== false }), { windowsHide: true, timeout: 600000, maxBuffer: 1 << 24 }, (e, o, er) => e ? ko(Error('ffmpeg : ' + String(er).trim().split(/\r?\n/).slice(-2).join(' '))) : ok())); }
+        finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+        return send(res, 200, { ok: true, name: outName, cards: !!cards, background: !!background });
       }
       if (p === '/api/reveal') { const f = inside(app.paths.output, input.name || '.'); execFile('explorer', f && fs.existsSync(f) && input.name ? ['/select,', f] : [app.paths.output]); return send(res, 200, { ok: true }); }
       if (p === '/api/tosu') { const url = installTosu(); startTosu(); return send(res, 200, { url }); }

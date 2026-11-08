@@ -450,7 +450,9 @@ async function openEditor(name) {
   const video = el('video', { src: '/videos/' + encodeURIComponent(name), controls: true, preload: 'metadata', class: 'ed-video' });
   const track = el('div', { class: 'ed-track' }), range = el('div', { class: 'ed-range' }), head = el('i', { class: 'ed-head' }); track.append(range, head);
   const list = el('div', { class: 'ed-moments' }), info = el('span', { class: 'muted' });
-  let start = 0, end = 0, layout = 'zoom', cards = true;
+  // réglages des clips gardés d'une fois sur l'autre
+  const C = S.app.clip ||= { layout: 'zoom', cards: true, overlay: false, bg: 'map' }, keep = () => save(true);
+  let start = 0, end = 0;
   const draw = () => {
     const d = video.duration || 1; end = Math.min(end || d, d);
     range.style.left = start / d * 100 + '%'; range.style.width = Math.max(0, end - start) / d * 100 + '%';
@@ -471,10 +473,13 @@ async function openEditor(name) {
   // la vidéo a pu charger pendant la lecture des moments : on dessine tout de suite dans ce cas
   const ready = () => { showMoments(); if (moments.length) pick(moments[0].start, moments[0].end); };
   if (video.readyState >= 1) ready(); else video.addEventListener('loadedmetadata', ready);
-  const layoutSeg = segField('Cadrage', [['zoom', 'Zoom sur le jeu'], ['full', 'Plein cadre']], () => layout, v => { layout = v; });
+  const layoutSeg = segField('Cadrage avec overlay', [['zoom', 'Zoom sur le jeu'], ['full', 'Plein cadre']], () => C.layout, v => { C.layout = v; keep(); });
+  layoutSeg.hidden = !C.overlay;
+  const overlaySw = sw('Afficher l’overlay', () => C.overlay, v => { C.overlay = v; layoutSeg.hidden = !v; keep(); }, 'Désactivé : recadré sur le terrain de jeu, sans bandeau, classement ni barres');
+  const bgSeg = cardInfo?.bg ? segField('Fond', [['map', 'Fond de la map'], ['video', 'Vidéo floutée']], () => C.bg, v => { C.bg = v; keep(); }) : null;
   const go = el('button', { class: 'btn primary', onclick: async () => {
     go.disabled = true; go.textContent = 'Export en cours…';
-    try { const r = await api('/api/clip', { name, start, end, layout, cards }); toast('Clip exporté : ' + r.name); S.videos = await api('/api/videos'); videoList(); $('#modal').hidden = true; }
+    try { const r = await api('/api/clip', { name, start, end, layout: C.layout, cards: C.cards, overlay: C.overlay, bg: C.bg }); toast('Clip exporté : ' + r.name); S.videos = await api('/api/videos'); videoList(); $('#modal').hidden = true; }
     catch (e) { toast(e.message, true); } finally { go.disabled = false; go.textContent = 'Exporter le clip vertical'; }
   } }, 'Exporter le clip vertical');
   modal('Montage · ' + name.replace(/\.mp4$/i, ''), el('div', { class: 'editor' },
@@ -483,8 +488,8 @@ async function openEditor(name) {
       el('button', { class: 'btn ghost sm', onclick: () => { start = video.currentTime; if (end <= start) end = Math.min(video.duration, start + 15); draw(); } }, 'Début ici'),
       el('button', { class: 'btn ghost sm', onclick: () => { end = video.currentTime; if (end <= start) start = Math.max(0, end - 15); draw(); } }, 'Fin ici'),
       el('button', { class: 'btn ghost sm', onclick: () => { video.currentTime = start; video.play(); } }, icon('play'), 'Lire le passage')),
-    el('div', { class: 'lab' }, 'Moments forts'), list, layoutSeg,
-    cardInfo ? sw('Intro et fin animées', () => cards, v => { cards = v; }, 'Carte de la map en ouverture, carte du score à la fin, sur fond flouté') : el('p', { class: 'muted', style: 'font-size:12px' }, 'Intro et fin animées : disponibles pour les vidéos exportées à partir de la 3.1.'),
+    el('div', { class: 'lab' }, 'Moments forts'), list, bgSeg, overlaySw, layoutSeg,
+    cardInfo ? sw('Intro et fin animées', () => C.cards, v => { C.cards = v; keep(); }, 'Carte de la map en ouverture, carte du score à la fin, sur fond flouté') : el('p', { class: 'muted', style: 'font-size:12px' }, 'Intro et fin animées : disponibles pour les vidéos exportées à partir de la 3.1.'),
     go));
 }
 
