@@ -46,24 +46,30 @@ export function toVideoTime(mapMs, frames, { oversample = 1, fps = 60, intro = 0
 // classement x<420, touches x>1560 sur 1920x1080). background : fichier RGBA brut 1080x1920 (fond de la map flouté)
 // à la place de la vidéo floutée.
 export const CARD_IN = 2.6, CARD_OUT = 2.8;
-const PLAYFIELD = 'crop=iw*0.5885:ih*0.7593:iw*0.2214:ih*0.1296';
-export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null, overlay = true, background = null, caption = null }) {
+// Cadre du jeu dans l'image verticale (vidéo source 16:9). Sans overlay : terrain de jeu avec une marge pour ne pas
+// couper les notes ; ce qui dépasse de l'overlay sur les bords disparaît dans le fondu du cadre (drawClipFrame).
+export function gameRect({ overlay = true, layout = 'full' } = {}) {
+  const [cx, cy, cw, ch] = !overlay ? [0.19, 0.085, 0.62, 0.83] : layout === 'zoom' ? [0.19, 0, 0.62, 1] : [0, 0, 1, 1];
+  const w = 1000, h = Math.round(w / (cw * 16 / (ch * 9)) / 2) * 2;
+  return { crop: `crop=iw*${cw}:ih*${ch}:iw*${cx}:ih*${cy}`, frac: [cx, cy, cw, ch], w, h, x: 40, y: Math.round((1920 - h) / 2 / 2) * 2 };
+}
+export function clipArgs({ input, output, start, end, layout = 'full', encoder = 'libx264', cards = null, overlay = true, background = null, frame = null, caption = null }) {
   const dur = Math.max(0.5, end - start), f = n => n.toFixed(3);
-  const I = cards ? CARD_IN : 0, O = cards ? CARD_OUT : 0, T = I + dur + O;
-  const fg = !overlay ? `${PLAYFIELD},scale=1080:-2` : layout === 'zoom' ? 'crop=iw*0.62:ih,scale=1080:-2' : 'scale=1080:-2';
+  const I = cards ? CARD_IN : 0, O = cards ? CARD_OUT : 0, T = I + dur + O, R = gameRect({ overlay, layout });
   const raw = file => ['-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', '1080x1920', '-framerate', '60', '-i', file];
-  const bgIdx = cards ? 4 : 1;   // entrées : 0 vidéo, [1 intro, 2 fin, 3 son décalé], puis le fond
+  const still = (k, d) => `[${k}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(d)}`;
+  const base = cards ? 4 : 1;   // entrées : 0 vidéo, [1 intro, 2 fin, 3 son décalé], puis fond, cadre, légende
+  const bgIdx = base, frameIdx = base + 1, capIdx = base + (background ? (frame ? 2 : 1) : 0);
   // intro/fin : la vidéo du jeu est prolongée (première et dernière image) avant d'être posée sur le fond
   const pad = cards ? `,tpad=start_duration=${f(I)}:start_mode=clone:stop_duration=${f(O)}:stop_mode=clone` : '';
-  // fond de la map : le jeu est fusionné en « éclaircir » (le fond sombre de danser laisse voir l'image de la map,
-  // les cercles et le curseur passent par-dessus), sans bande noire autour du terrain
+  // fond de la map flouté, jeu opaque dans son cadre, puis le cadre aux bords fondus par-dessus (fond percé d'un trou flou)
   const vert = background
-    ? `[${bgIdx}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(T)},format=gbrp[bg];[0:v]fps=60,${fg}${pad},pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,format=gbrp[fg];[bg][fg]blend=all_mode=lighten:shortest=1,format=yuv420p,setsar=1`
-    : `[0:v]fps=60,split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2[bg];[b]${fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1${pad}`;
+    ? `${still(bgIdx, T)},format=yuv420p[bg];[0:v]fps=60,${R.crop},scale=${R.w}:${R.h}${pad}[fg];[bg][fg]overlay=${R.x}:${R.y}:shortest=1` + (frame ? `[g1];${still(frameIdx, T)},format=rgba[fr];[g1][fr]overlay=0:0:shortest=1,setsar=1` : ',setsar=1')
+    : `[0:v]fps=60,split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2[bg];[b]${R.crop},scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1${pad}`;
   const enc = /nvenc/.test(encoder) ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20', '-b:v', '0'] : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];
-  const src = ['-ss', start.toFixed(3), '-t', dur.toFixed(3)], bgIn = background ? raw(background) : [], capIn = caption ? raw(caption) : [];
-  // légende : visible pendant le jeu seulement (pas sur les cartes), entrée placée après le fond
-  const capIdx = (cards ? 4 : 1) + (background ? 1 : 0);
+  const src = ['-ss', start.toFixed(3), '-t', dur.toFixed(3)], capIn = caption ? raw(caption) : [];
+  const bgIn = background ? [...raw(background), ...(frame ? raw(frame) : [])] : [];
+  // légende : visible pendant le jeu seulement (pas sur les cartes)
   const withCap = out => caption ? `${vert}[pre];[${capIdx}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(dur)},format=rgba,fade=t=in:st=0:d=0.4:alpha=1,setpts=PTS+${f(I)}/TB[cap];[pre][cap]overlay=eof_action=pass${out}` : `${vert}${out}`;
   if (!cards) return ['-hide_banner', '-y', ...src, '-i', input, ...bgIn, ...capIn, '-filter_complex', withCap(',format=yuv420p[v]'), '-map', '[v]', '-map', '0:a?', ...enc, '-c:a', 'copy', '-movflags', '+faststart', output];
   const card = (k, d) => `[${k}:v]loop=loop=-1:size=1:start=0,setpts=N/(60*TB),trim=duration=${f(d)},format=rgba`;
@@ -127,7 +133,7 @@ export function drawClipCard(g, kind, info = {}) {
 }
 
 // Fond des clips verticaux : l'image de la map en plein cadre, floutée et un peu assombrie.
-export function drawClipBackground(g, img, { blur = 26, dim = 0.38 } = {}) {
+export function drawClipBackground(g, img, { blur = 42, dim = 0.5 } = {}) {
   const W = 1080, H = 1920; g.clearRect(0, 0, W, H); g.fillStyle = '#0b0b0e'; g.fillRect(0, 0, W, H);
   if (img) { const s = Math.max(W / img.width, H / img.height) * 1.08; g.filter = `blur(${blur}px)`; g.drawImage(img, (W - img.width * s) / 2, (H - img.height * s) / 2, img.width * s, img.height * s); g.filter = 'none'; }
   g.fillStyle = `rgba(0,0,0,${dim})`; g.fillRect(0, 0, W, H);
@@ -158,3 +164,12 @@ export function drawClipCaption(g, text) {
   });
 }
 function wrap(g, words, max) { const out = []; for (const w of words) { const cur = out.at(-1); if (cur && g.measureText(cur + ' ' + w).width <= max) out[out.length - 1] = cur + ' ' + w; else out.push(w); } return out; }
+
+// Cadre posé au-dessus du jeu : le même fond flouté, percé d'un trou aux bords fondus à l'emplacement du jeu.
+// Le jeu reste opaque au centre, se fond dans le fond sur les bords, et ce qui dépasse de l'overlay y disparaît.
+export function drawClipFrame(g, img, rect, { feather = 34, radius = 44 } = {}) {
+  drawClipBackground(g, img);
+  g.save(); g.globalCompositeOperation = 'destination-out'; g.filter = `blur(${feather}px)`;
+  const m = feather * 0.9; g.beginPath(); g.roundRect(rect.x + m, rect.y + m, rect.w - 2 * m, rect.h - 2 * m, radius); g.fillStyle = '#000'; g.fill();
+  g.restore(); g.filter = 'none';
+}

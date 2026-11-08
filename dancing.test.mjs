@@ -117,12 +117,14 @@ test('clip vertical avec cartes : intro + fin, son décalé, deux calques flous'
   for (const k of ['intro', 'outro']) drawClipCard(g, k, { title: 'T', artist: 'A', version: 'V', stars: 6, grade: 'S', score: 1e6, acc: 99 });
 });
 
-test('clip vertical : fond de la map fusionné, overlay masqué, prolongé pour les cartes', async () => {
-  const { clipArgs, drawClipBackground } = await import('./clips.mjs');
-  const s = clipArgs({ input: 'in.mp4', output: 'o.mp4', start: 0, end: 8, background: 'bg.rgba', overlay: false, cards: { intro: 'i', outro: 'o' } }).join(' ');
-  assert(s.includes('blend=all_mode=lighten') && s.includes('crop=iw*0.5885:ih*0.7593'));
+test('clip vertical : fond de la map, jeu opaque dans un cadre fondu, overlay masqué, prolongé pour les cartes', async () => {
+  const { clipArgs, drawClipBackground, drawClipFrame, gameRect } = await import('./clips.mjs');
+  const R = gameRect({ overlay: false });
+  assert.equal(R.w, 1000); assert(R.h > 700 && R.y + R.h <= 1920);
+  const s = clipArgs({ input: 'in.mp4', output: 'o.mp4', start: 0, end: 8, background: 'bg.rgba', frame: 'fr.rgba', overlay: false, cards: { intro: 'i', outro: 'o' } }).join(' ');
+  assert(!s.includes('lighten') && s.includes(R.crop) && s.includes(`overlay=${R.x}:${R.y}`) && s.includes('[5:v]loop'));
   assert(s.includes('-framerate 60') && s.includes('trim=duration=13.400') && s.includes(',tpad='));
-  const c = createCanvas(1080, 1920); drawClipBackground(c.getContext('2d'), null);
+  const c = createCanvas(1080, 1920); drawClipBackground(c.getContext('2d'), null); drawClipFrame(c.getContext('2d'), null, R);
 });
 
 test('clip vertical : légende pendant le jeu seulement, étoile dessinée', async () => {

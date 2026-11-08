@@ -527,7 +527,14 @@ async function openEditor(name) {
   track.addEventListener('pointerdown', ev => { video.currentTime = tAt(ev); });
 
   const playLabel = el('span', {}, 'Lire le passage'), playIco = el('span', {}, icon('play'));
-  const toggle = () => { if (video.paused) { if (video.currentTime < st.start || video.currentTime >= st.end - 0.05) video.currentTime = st.start; video.play(); } else video.pause(); };
+  // lecture du passage : avec l'intro activée, la carte de la map passe d'abord sur l'image figée (comme dans l'export)
+  const toggle = () => {
+    if (st.seq || !video.paused) { st.seq = null; video.pause(); return; }
+    const fromStart = video.currentTime < st.start || video.currentTime >= st.end - 0.05;
+    if (fromStart) video.currentTime = st.start;
+    if (fromStart && withCards()) { st.seq = { phase: 'intro', t0: performance.now() }; playIco.replaceChildren(icon('pause')); playLabel.textContent = 'Pause'; }
+    else video.play();
+  };
   const playBtn = el('button', { class: 'btn primary sm', onclick: toggle }, playIco, playLabel);
   video.addEventListener('play', () => { playIco.replaceChildren(icon('pause')); playLabel.textContent = 'Pause'; });
   video.addEventListener('pause', () => { playIco.replaceChildren(icon('play')); playLabel.textContent = 'Lire le passage'; });
@@ -544,29 +551,50 @@ async function openEditor(name) {
       : [el('span', { class: 'muted' }, 'Pas de moments détectés (vidéo exportée avant la 3.1) : choisis le passage avec les poignées.')]));
   };
 
-  // aperçu téléphone : le rendu final dessiné en direct (fond, recadrage, fusion, légende)
-  const phone = el('canvas', { class: 'ed-phone', width: 360, height: 640 }), pg = phone.getContext('2d');
+  // aperçu téléphone : les mêmes images que l'export (fond flouté, cadre aux bords fondus, cartes), le jeu dessiné en direct,
+  // et l'intro / la fin jouées autour du passage quand elles sont activées
+  const phone = el('canvas', { class: 'ed-phone', width: 360, height: 640 }), pg = phone.getContext('2d'), K = 360 / 1080;
   const cover = img => { const iw = img.videoWidth || img.naturalWidth, ih = img.videoHeight || img.naturalHeight, s = Math.max(360 / iw, 640 / ih) * 1.08; pg.drawImage(img, (360 - iw * s) / 2, (640 - ih * s) / 2, iw * s, ih * s); };
-  const renderPhone = () => {
-    const vw = video.videoWidth, vh = video.videoHeight; pg.globalCompositeOperation = 'source-over'; pg.filter = 'none'; pg.fillStyle = '#0b0b0e'; pg.fillRect(0, 0, 360, 640);
+  const art = k => Object.assign(new Image(), { src: `/api/clip-art?name=${encodeURIComponent(name)}&kind=${k}` + (k === 'frame' ? `&overlay=${C.overlay ? 1 : 0}&layout=${C.layout}` : '') });
+  const A = cardInfo ? { intro: art('intro'), outro: art('outro'), bg: bgImg && art('bg'), frame: bgImg && art('frame') } : {};
+  const refreshFrame = () => { if (A.frame) A.frame = art('frame'); };
+  const ok = i => i?.complete && i.naturalWidth;
+  // même cadre que gameRect() dans clips.mjs (vidéo 16:9, jeu large de 1000 px sur 1080)
+  const rect = () => { const f = !C.overlay ? [0.19, 0.085, 0.62, 0.83] : C.layout === 'zoom' ? [0.19, 0, 0.62, 1] : [0, 0, 1, 1], h = 1000 / (f[2] * 16 / (f[3] * 9)); return { f, x: 40, y: (1920 - h) / 2, w: 1000, h }; };
+  const scene = () => {
+    const vw = video.videoWidth, vh = video.videoHeight; pg.filter = 'none'; pg.globalAlpha = 1; pg.fillStyle = '#0b0b0e'; pg.fillRect(0, 0, 360, 640);
     if (!vw) return;
-    const useMap = C.bg === 'map' && bgImg?.complete && bgImg.naturalWidth;
-    pg.filter = 'blur(9px)'; cover(useMap ? bgImg : video); pg.filter = 'none';
-    if (useMap) { pg.fillStyle = 'rgba(0,0,0,.38)'; pg.fillRect(0, 0, 360, 640); }
-    const crop = !C.overlay ? [0.2214, 0.1296, 0.5885, 0.7593] : C.layout === 'zoom' ? [0.19, 0, 0.62, 1] : [0, 0, 1, 1];
-    const [cx, cy, cw, ch] = [crop[0] * vw, crop[1] * vh, crop[2] * vw, crop[3] * vh], dh = 360 * ch / cw;
-    pg.globalCompositeOperation = useMap ? 'lighten' : 'source-over'; pg.drawImage(video, cx, cy, cw, ch, 0, (640 - dh) / 2, 360, dh); pg.globalCompositeOperation = 'source-over';
-    const cap = (C.caption || '').trim();
-    if (cap) { pg.font = '800 22px Nunito, sans-serif'; const w = Math.min(330, pg.measureText(cap).width + 30); pg.fillStyle = 'rgba(14,14,20,.55)'; pg.beginPath(); pg.roundRect((360 - w) / 2, 80, w, 40, 13); pg.fill(); pg.fillStyle = '#fff'; pg.textAlign = 'center'; pg.fillText(cap.length > 32 ? cap.slice(0, 31) + '…' : cap, 180, 107); }
+    const R = rect(), [cx, cy, cw, ch] = R.f.map((v, i) => v * (i % 2 ? vh : vw));
+    if (C.bg === 'map' && ok(A.bg)) { pg.drawImage(A.bg, 0, 0, 360, 640); pg.drawImage(video, cx, cy, cw, ch, R.x * K, R.y * K, R.w * K, R.h * K); if (ok(A.frame)) pg.drawImage(A.frame, 0, 0, 360, 640); }
+    else { pg.filter = 'blur(9px)'; cover(video); pg.filter = 'none'; const dh = 360 * ch / cw; pg.drawImage(video, cx, cy, cw, ch, 0, (640 - dh) / 2, 360, dh); }
   };
-  const loop = () => { st.raf = requestAnimationFrame(loop); head.style.left = pct(video.currentTime); if (!video.paused && video.currentTime >= st.end) { video.pause(); video.currentTime = st.end; } renderPhone(); };
+  const caption = () => {
+    const cap = (C.caption || '').trim(); if (!cap) return;
+    pg.font = '800 22px Nunito, sans-serif'; const w = Math.min(330, pg.measureText(cap).width + 30); pg.fillStyle = 'rgba(14,14,20,.55)'; pg.beginPath(); pg.roundRect((360 - w) / 2, 80, w, 40, 13); pg.fill(); pg.fillStyle = '#fff'; pg.textAlign = 'center'; pg.fillText(cap.length > 32 ? cap.slice(0, 31) + '…' : cap, 180, 107);
+  };
+  const withCards = () => C.cards && cardInfo;
+  const renderPhone = () => {
+    if (st.seq) { const t = (performance.now() - st.seq.t0) / 1000; if (st.seq.phase === 'intro' && t >= 2.6) { st.seq = null; video.play(); } else if (st.seq.phase === 'outro' && t >= 2.8) st.seq = null; }
+    scene();
+    const s = st.seq; if (!s) return caption();
+    // comme l'export : image floutée par-dessus, carte en fondu, sortie du noir (intro) ou fondu au noir (fin)
+    const t = (performance.now() - s.t0) / 1000, D = s.phase === 'intro' ? 2.6 : 2.8, cl = v => Math.max(0, Math.min(1, v));
+    pg.globalAlpha = s.phase === 'intro' ? cl((D - t) / 0.5) : cl(t / 0.5); pg.filter = 'blur(7px)'; pg.drawImage(phone, 0, 0); pg.filter = 'none';
+    if (ok(A[s.phase])) { pg.globalAlpha = s.phase === 'intro' ? Math.min(cl((t - 0.2) / 0.5), cl((D - 0.05 - t) / 0.45)) : cl((t - 0.35) / 0.5); pg.drawImage(A[s.phase], 0, 0, 360, 640); }
+    pg.globalAlpha = s.phase === 'intro' ? cl(1 - t / 0.7) : cl((t - (D - 0.8)) / 0.8); pg.fillStyle = '#000'; pg.fillRect(0, 0, 360, 640); pg.globalAlpha = 1;
+  };
+  const loop = () => {
+    st.raf = requestAnimationFrame(loop); head.style.left = pct(video.currentTime);
+    if (!video.paused && video.currentTime >= st.end) { video.pause(); video.currentTime = st.end; if (withCards()) st.seq = { phase: 'outro', t0: performance.now() }; }
+    renderPhone();
+  };
 
   // réglages
-  const layoutSeg = segField('Cadrage avec overlay', [['zoom', 'Zoom sur le jeu'], ['full', 'Plein cadre']], () => C.layout, v => { C.layout = v; keep(); });
+  const layoutSeg = segField('Cadrage avec overlay', [['zoom', 'Zoom sur le jeu'], ['full', 'Plein cadre']], () => C.layout, v => { C.layout = v; refreshFrame(); keep(); });
   layoutSeg.hidden = !C.overlay;
   const settings = el('div', { class: 'ed-settings' },
     bgImg ? segField('Fond', [['map', 'Fond de la map'], ['video', 'Vidéo floutée']], () => C.bg, v => { C.bg = v; keep(); }) : null,
-    sw('Afficher l’overlay', () => C.overlay, v => { C.overlay = v; layoutSeg.hidden = !v; keep(); }, 'Désactivé : recadré sur le terrain de jeu'),
+    sw('Afficher l’overlay', () => C.overlay, v => { C.overlay = v; layoutSeg.hidden = !v; refreshFrame(); keep(); }, 'Désactivé : recadré sur le terrain de jeu'),
     layoutSeg,
     cardInfo ? sw('Intro et fin animées', () => C.cards, v => { C.cards = v; keep(); }, 'Carte de la map au début, carte du score à la fin') : el('p', { class: 'muted', style: 'font-size:12px' }, 'Intro et fin animées : pour les vidéos exportées à partir de la 3.1.'),
     el('div', { class: 'field' }, el('div', { class: 'lab' }, 'Légende en haut du clip'), el('input', { value: C.caption, maxlength: 90, placeholder: 'ex. FC 7★ en HDDT', oninput: e => { C.caption = e.target.value; }, onchange: keep })));

@@ -12,7 +12,7 @@ import { demoData } from './web/demo-data.js';
 import { BUILTIN, dancingPresets } from './web/presets.js';
 import { maniaData } from './mania.mjs';
 import { DatabaseSync } from 'node:sqlite';
-import { clipArgs, drawClipCard, drawClipBackground, drawClipCaption, CARD_IN, CARD_OUT } from './clips.mjs';
+import { clipArgs, drawClipCard, drawClipBackground, drawClipFrame, drawClipCaption, gameRect, CARD_IN, CARD_OUT } from './clips.mjs';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import os from 'node:os';
 
@@ -505,12 +505,12 @@ http.createServer(async (req, res) => {
         const info = readJSON(src + '.moments.json')?.info;
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dancing-clip-')), c = createCanvas(1080, 1920), g = c.getContext('2d');
         const dump = name => { const f = path.join(tmp, name); fs.writeFileSync(f, Buffer.from(g.getImageData(0, 0, 1080, 1920).data.buffer)); return f; };
-        let cards = null, background = null, caption = null;
+        let cards = null, background = null, frame = null, caption = null;
         if (info && input.cards !== false) cards = Object.fromEntries(['intro', 'outro'].map(k => { drawClipCard(g, k, info); return [k, dump(k + '.rgba')]; }));
-        if (input.bg !== 'video' && info?.bg && fs.existsSync(info.bg)) { try { drawClipBackground(g, await loadImage(info.bg)); background = dump('bg.rgba'); } catch { } }
+        if (input.bg !== 'video' && info?.bg && fs.existsSync(info.bg)) { try { const img = await loadImage(info.bg); drawClipBackground(g, img); background = dump('bg.rgba'); drawClipFrame(g, img, gameRect({ overlay: input.overlay !== false, layout: input.layout })); frame = dump('frame.rgba'); } catch { } }
         const text = String(input.caption || '').trim().slice(0, 90);
         if (text) { drawClipCaption(g, text); caption = dump('caption.rgba'); }
-        const args = clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards, background, caption, overlay: input.overlay !== false });
+        const args = clipArgs({ input: src, output: path.join(app.paths.output, outName), start, end, layout: input.layout, encoder: enc, cards, background, frame, caption, overlay: input.overlay !== false });
         const total = (end - start) + (cards ? CARD_IN + CARD_OUT : 0);
         clipJob = { running: true, progress: 0, name: outName, error: null, started: Date.now() };
         const pr = spawn(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), args, { windowsHide: true }); let err = '';
@@ -535,6 +535,19 @@ http.createServer(async (req, res) => {
     if (p === '/api/videos') return send(res, 200, await listVideos());
     if (p === '/api/clip-job') return send(res, 200, clipJob);
     if (p === '/api/proxy-file') { const f = inside(app.paths.output, url.searchParams.get('name') || ''), pf = f && fs.existsSync(f) && proxyPath(f); return pf && fs.existsSync(pf) ? serveFile(req, res, pf) : send(res, 404, { error: 'Aperçu absent' }); }
+    // images de l'aperçu téléphone, dessinées par le même code que l'export : fond, cadre, cartes d'intro et de fin (PNG)
+    if (p === '/api/clip-art') {
+      const f = inside(app.paths.output, url.searchParams.get('name') || ''), info = f && readJSON(f + '.moments.json')?.info, kind = url.searchParams.get('kind');
+      if (!info) return send(res, 404, { error: 'Pas d’infos' });
+      const c = createCanvas(1080, 1920), g = c.getContext('2d');
+      if (kind === 'intro' || kind === 'outro') drawClipCard(g, kind, info);
+      else {
+        if (!info.bg || !fs.existsSync(info.bg)) return send(res, 404, { error: 'Pas de fond' });
+        const img = await loadImage(info.bg);
+        if (kind === 'frame') drawClipFrame(g, img, gameRect({ overlay: url.searchParams.get('overlay') === '1', layout: url.searchParams.get('layout') || 'zoom' })); else drawClipBackground(g, img);
+      }
+      return send(res, 200, await c.encode('png'), 'image/png');
+    }
     if (p === '/api/clip-bg') { const f = inside(app.paths.output, url.searchParams.get('name') || ''), bg = f && readJSON(f + '.moments.json')?.info?.bg; return bg && fs.existsSync(bg) ? serveFile(req, res, bg) : send(res, 404, { error: 'Pas de fond' }); }
     if (p === '/api/moments') { const f = inside(app.paths.output, url.searchParams.get('name') || ''); return send(res, 200, (f && readJSON(f + '.moments.json')) || { moments: [] }); }
     if (p === '/api/native/library') return send(res, 200, { presets: [...BUILTIN, ...dancingPresets()] });
