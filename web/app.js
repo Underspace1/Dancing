@@ -670,7 +670,7 @@ async function poll() {
 let shownPct = 0;
 function showJob(j) {
   if (!j) { $('#dockJob').hidden = true; return; }
-  $('#dockJob').hidden = j.stage === 'done'; $('#dockIdle').hidden = j.running;
+  $('#dockJob').hidden = j.stage === 'done'; $('#dockIdle').hidden = j.running; $('#dock').classList.toggle('busy', !!j.running);
   const order = ['danser', 'overlay', 'done'], cur = order.indexOf(j.stage);
   $$('#steps span').forEach(s => { const i = order.indexOf(s.dataset.s); s.className = i < cur || j.stage === 'done' ? 'ok' : i === cur ? 'cur' : ''; });
   const overall = j.maps ? j.maps.done / Math.max(1, j.maps.total) : j.stage === 'done' ? 1 : j.stage === 'overlay' ? 0.6 + j.progress * 0.4 : j.progress * 0.6;
