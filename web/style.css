@@ -576,3 +576,11 @@ button.mitem { cursor: pointer; } button.mitem:hover { border-color: var(--acc);
 @media (max-width: 900px) { .ed-grid { grid-template-columns: 1fr; } }
 .ed-bar.wait i { width: 30% !important; animation: edwait 1.1s ease-in-out infinite alternate; }
 @keyframes edwait { from { transform: translateX(-100%); } to { transform: translateX(330%); } }
+/* lecteurs : vidéos H.265 non lisibles par l'appli, aperçu préparé à la demande */
+.vid-ph { aspect-ratio: 16/9; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 10px; text-align: center; }
+.vid-ph video { width: 100%; flex: 1; min-height: 0; background: #000; }
+.vid-ph small { color: var(--tx3); font-size: 11px; }
+.ed-vwrap { position: relative; }
+.ed-vwrap .ed-video { display: block; }
+.ed-vstatus { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: #fff; font-weight: 700; background: rgba(0,0,0,.6); border-radius: 10px; }
+.ed-vstatus[hidden] { display: none; }

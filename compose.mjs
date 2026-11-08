@@ -49,7 +49,9 @@ export async function loadAssets(data, job) {
   return { avatars, avatar, flag, backdrop: prepareBackdrop(bg, (w, h) => createCanvas(w, h)) };
 }
 
-export function encoderArgs(job) {
+// H.265 : étiquette « hvc1 » (et non « hev1 ») pour que QuickTime, iPhone et TikTok le reconnaissent
+export function encoderArgs(job) { const a = encoderArgsBase(job); return /hevc|265/.test(job.encoder || '') ? [...a, '-tag:v', 'hvc1'] : a; }
+function encoderArgsBase(job) {
   const enc = job.encoder || 'libx264', q = String(job.crf ?? 18);
   if (enc === 'libx264') return ['-c:v', 'libx264', '-preset', job.preset || 'veryfast', '-crf', q];
   if (enc === 'libx265') return ['-c:v', 'libx265', '-preset', job.preset || 'fast', '-crf', q];

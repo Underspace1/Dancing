@@ -5,7 +5,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { createExtras } from './extras.mjs';
 import { captureGameFrames, nativeSnapshot } from './compose.mjs';
 import { demoData } from './web/demo-data.js';
@@ -164,10 +164,32 @@ async function listReplays() {
 const replayPath = id => { const p = Buffer.from(String(id), 'base64url').toString(); if (!p.toLowerCase().endsWith('.osr') || !fs.existsSync(p)) throw Error('Replay introuvable.'); return p; };
 
 function listSkins() { try { return ['default', ...fs.readdirSync(osuDir('Skins'), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name)]; } catch { return ['default']; } }
+// Format vidéo lu dans l'en-tête MP4 (boîte stsd), au début ou à la fin du fichier : sert à savoir si l'appli peut l'afficher.
+function sniffCodec(file, size) {
+  let fd; try {
+    fd = fs.openSync(file, 'r');
+    const look = (pos, len) => { const b = Buffer.alloc(Math.min(len, size)); fs.readSync(fd, b, 0, b.length, Math.max(0, pos)); return b.toString('latin1'); };
+    const txt = look(0, 1 << 20) + look(size - (4 << 20), 4 << 20);
+    return /hvc1|hev1/.test(txt) ? 'hevc' : /av01/.test(txt) ? 'av1' : /avc1/.test(txt) ? 'h264' : '?';
+  } catch { return '?'; } finally { if (fd != null) fs.closeSync(fd); }
+}
+// Copie d'aperçu en H.264 (cache/proxies) pour les vidéos que le moteur de l'appli (WebView2) ne sait pas afficher,
+// comme le H.265 sans l'extension Windows. L'original n'est pas touché ; les clips sont toujours coupés dans l'original.
+const proxies = new Map();
+function proxyPath(src) { const st = fs.statSync(src); return path.join(root, 'cache', 'proxies', createHash('sha1').update(src + st.size + st.mtimeMs).digest('hex').slice(0, 16) + '.mp4'); }
+function ensureProxy(src) {
+  const out = proxyPath(src); if (fs.existsSync(out)) return Promise.resolve(out); if (proxies.has(out)) return proxies.get(out);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  const tmp = out.replace(/\.mp4$/, '.part.mp4'), nv = /nvenc/.test(app.danser?.Recording?.Encoder || danserBase().Recording?.Encoder || '');
+  const enc = nv ? ['-c:v', 'h264_nvenc', '-preset', 'p2', '-cq', '24', '-b:v', '0'] : ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '24'];
+  const p = new Promise((ok, ko) => execFile(path.join(danserDir(), 'ffmpeg', 'ffmpeg.exe'), ['-hide_banner', '-y', '-i', src, '-vf', 'fps=60,scale=-2:720', ...enc, '-c:a', 'copy', '-movflags', '+faststart', tmp],
+    { windowsHide: true, timeout: 1800000, maxBuffer: 1 << 24 }, e => { proxies.delete(out); if (e) { fs.rmSync(tmp, { force: true }); return ko(Error('Aperçu impossible à préparer.')); } fs.renameSync(tmp, out); ok(out); }));
+  proxies.set(out, p); return p;
+}
 async function listVideos() {
   const dir = app.paths.output; let names = []; try { names = await fsp.readdir(dir); } catch { }
   const out = [];
-  for (const n of names.filter(n => /\.(mp4|mkv|mov)$/i.test(n))) { const st = await fsp.stat(path.join(dir, n)); out.push({ name: n, size: st.size, mtime: st.mtimeMs }); }
+  for (const n of names.filter(n => /\.(mp4|mkv|mov)$/i.test(n))) { const st = await fsp.stat(path.join(dir, n)); out.push({ name: n, size: st.size, mtime: st.mtimeMs, codec: sniffCodec(path.join(dir, n), st.size) }); }
   return out.sort((a, b) => b.mtime - a.mtime);
 }
 
@@ -471,6 +493,7 @@ http.createServer(async (req, res) => {
       if (p === '/api/settings') { if (job?.running) throw Error('Attends la fin du rendu.'); app = deepMerge(structuredClone(defaultsApp), input); await saveApp(); return send(res, 200, { ok: true }); }
       if (p === '/api/render') { await startRender(input); return send(res, 202, { ok: true }); }
       if (p === '/api/cancel') { if (job?.running) { job.cancelled = true; kill(job.proc); } return send(res, 200, { ok: true }); }
+      if (p === '/api/proxy') { const f = inside(app.paths.output, input.name || ''); if (!f || !fs.existsSync(f)) throw Error('Vidéo introuvable.'); await ensureProxy(f); return send(res, 200, { ok: true }); }
       if (p === '/api/clip') {
         // Montage : un passage exporté en vertical (TikTok), en tâche de fond ; l'avancement se lit sur /api/clip-job.
         if (clipJob?.running) throw Error('Un clip est déjà en cours d’export.');
@@ -511,6 +534,7 @@ http.createServer(async (req, res) => {
     if (p === '/api/job') return send(res, 200, job ? { ...job, proc: undefined } : null);
     if (p === '/api/videos') return send(res, 200, await listVideos());
     if (p === '/api/clip-job') return send(res, 200, clipJob);
+    if (p === '/api/proxy-file') { const f = inside(app.paths.output, url.searchParams.get('name') || ''), pf = f && fs.existsSync(f) && proxyPath(f); return pf && fs.existsSync(pf) ? serveFile(req, res, pf) : send(res, 404, { error: 'Aperçu absent' }); }
     if (p === '/api/clip-bg') { const f = inside(app.paths.output, url.searchParams.get('name') || ''), bg = f && readJSON(f + '.moments.json')?.info?.bg; return bg && fs.existsSync(bg) ? serveFile(req, res, bg) : send(res, 404, { error: 'Pas de fond' }); }
     if (p === '/api/moments') { const f = inside(app.paths.output, url.searchParams.get('name') || ''); return send(res, 200, (f && readJSON(f + '.moments.json')) || { moments: [] }); }
     if (p === '/api/native/library') return send(res, 200, { presets: [...BUILTIN, ...dancingPresets()] });

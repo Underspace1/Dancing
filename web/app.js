@@ -437,12 +437,42 @@ const size = b => b > 1e9 ? (b / 1e9).toFixed(2) + ' Go' : (b / 1e6).toFixed(0) 
 function videoList() {
   paneMontage();
   $('#videoCount').textContent = S.videos.length || '';
-  $('#videoList').replaceChildren(...(S.videos.length ? S.videos.map((v, i) => el('div', { class: 'vid', style: `--i:${i}` }, el('video', { src: '/videos/' + encodeURIComponent(v.name), controls: true, preload: 'none' }), el('div', {}, el('b', { title: v.name }, v.name), el('small', {}, size(v.size)), el('button', { class: 'link', onclick: () => api('/api/reveal', { name: v.name }) }, 'Afficher'), v.name.includes('(TikTok ') ? null : el('button', { class: 'link', onclick: () => openEditor(v.name) }, 'Montage')))) : [el('div', { class: 'empty' }, 'Tes vidéos rendues apparaîtront ici.')]));
+  $('#videoList').replaceChildren(...(S.videos.length ? S.videos.map((v, i) => el('div', { class: 'vid', style: `--i:${i}` }, listPlayer(v), el('div', {}, el('b', { title: v.name }, v.name), el('small', {}, size(v.size)), el('button', { class: 'link', onclick: () => api('/api/reveal', { name: v.name }) }, 'Afficher'), v.name.includes('(TikTok ') ? null : el('button', { class: 'link', onclick: () => openEditor(v.name) }, 'Montage')))) : [el('div', { class: 'empty' }, 'Tes vidéos rendues apparaîtront ici.')]));
+}
+// Lecteur de la liste : direct si le format est lisible ; sinon un bouton qui prépare l'aperçu H.264 au premier clic.
+function listPlayer(v) {
+  if (CAN_PLAY[v.codec] !== false) return el('video', { src: '/videos/' + encodeURIComponent(v.name), controls: true, preload: 'none' });
+  const msg = el('small', {}, 'Vidéo en H.265 : l’appli prépare un aperçu lisible au premier clic.');
+  const box = el('div', { class: 'vid-ph' }, el('button', { class: 'btn primary sm', onclick: () => {
+    const video = el('video', { controls: true, autoplay: true, preload: 'auto' });
+    box.replaceChildren(video, msg); bindPlayable(video, v.name, m => { msg.textContent = m; msg.hidden = !m; });
+  } }, icon('play'), 'Lire'), msg);
+  return box;
 }
 
 // ---------- montage : onglet dédié + éditeur plein écran (clips verticaux pour TikTok, Shorts, Reels) ----------
 // Une vidéo HEVC 240 i/s occupe un décodeur matériel : tout lecteur fermé est vidé (src retiré), sinon les suivants restent noirs.
 const releaseVideos = root => root?.querySelectorAll('video').forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
+// Formats que le moteur de l'appli (WebView2) sait afficher : le H.265 demande l'extension Windows « Extensions vidéo HEVC ».
+const CAN_PLAY = { h264: true, '?': true, hevc: !location.search.includes('nohevc') && !!window.MediaSource?.isTypeSupported?.('video/mp4; codecs="hvc1.1.6.L120.90"'), av1: !!window.MediaSource?.isTypeSupported?.('video/mp4; codecs="av01.0.08M.08"') };
+const unplayable = name => CAN_PLAY[S.videos.find(v => v.name === name)?.codec] === false;
+// Branche un lecteur : l'original s'il est lisible, sinon une copie d'aperçu H.264 préparée à la demande (aussi si l'image reste vide).
+function bindPlayable(video, name, status = () => {}) {
+  let proxied = false;
+  const useProxy = async () => {
+    if (proxied) return; proxied = true;
+    const t = video.currentTime || 0, wasPlaying = !video.paused; video.pause();
+    status('Préparation d’un aperçu lisible (vidéo en H.265)…');
+    try {
+      await api('/api/proxy', { name });
+      video.addEventListener('loadedmetadata', () => { if (t) video.currentTime = t; if (wasPlaying) video.play().catch(() => {}); }, { once: true });
+      video.src = '/api/proxy-file?name=' + encodeURIComponent(name); status('');
+    } catch (e) { status(e.message); }
+  };
+  if (unplayable(name)) return useProxy();
+  video.addEventListener('loadedmetadata', () => { if (!video.videoWidth) useProxy(); });
+  video.src = '/videos/' + encodeURIComponent(name);
+}
 function paneMontage() {
   if (!$('#t-montage')) return;
   const vids = S.videos.filter(v => !v.name.includes('(TikTok ')), clips = S.videos.filter(v => v.name.includes('(TikTok '));
@@ -475,7 +505,8 @@ async function openEditor(name) {
   const { moments = [], info: cardInfo = null } = await api('/api/moments?name=' + encodeURIComponent(name)).catch(() => ({}));
   const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
   const st = edState = { raf: 0, poll: 0, start: 0, end: 0, keys: null };
-  const video = el('video', { class: 'ed-video', src: '/videos/' + encodeURIComponent(name), preload: 'auto', playsinline: true });
+  const video = el('video', { class: 'ed-video', preload: 'auto', playsinline: true }), vstatus = el('div', { class: 'ed-vstatus', hidden: true });
+  bindPlayable(video, name, msg => { vstatus.textContent = msg; vstatus.hidden = !msg; });
   const bgImg = cardInfo?.bg ? Object.assign(new Image(), { src: '/api/clip-bg?name=' + encodeURIComponent(name) }) : null;
   const dur = () => video.duration || 1, pct = t => t / dur() * 100 + '%';
 
@@ -565,7 +596,7 @@ async function openEditor(name) {
     el('header', {}, el('div', {}, el('h2', {}, 'Montage'), el('small', { class: 'muted' }, name.replace(/\.mp4$/i, ''))),
       el('span', { class: 'muted ed-keys' }, 'Espace : lire · I / O : début / fin · Échap : fermer'), el('button', { class: 'icon-btn', title: 'Fermer', onclick: closeEditor }, icon('x'))),
     el('div', { class: 'ed-grid' },
-      el('div', { class: 'ed-main' }, video, track, el('div', { class: 'ed-row' }, time, playBtn, inBtn, outBtn), durRow, el('div', { class: 'lab' }, 'Moments forts'), list),
+      el('div', { class: 'ed-main' }, el('div', { class: 'ed-vwrap' }, video, vstatus), track, el('div', { class: 'ed-row' }, time, playBtn, inBtn, outBtn), durRow, el('div', { class: 'lab' }, 'Moments forts'), list),
       el('div', { class: 'ed-side' }, phone, settings, go, bar, result))));
   $('#editor').hidden = false;
 
