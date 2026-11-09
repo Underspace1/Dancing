@@ -515,10 +515,10 @@ async function openEditor(name) {
   const dur = () => video.duration || 1, pct = t => t / dur() * 100 + '%';
 
   // ligne de temps : passage choisi, poignées de début/fin à faire glisser, moments forts, tête de lecture
-  const track = el('div', { class: 'ed-track' }), range = el('div', { class: 'ed-range' }), hs = el('i', { class: 'ed-handle', title: 'Début' }), he = el('i', { class: 'ed-handle', title: 'Fin' }), head = el('i', { class: 'ed-head' });
-  track.append(range, hs, he, head);
+  const track = el('div', { class: 'ed-track' }), selEl = el('div', { class: 'ed-range' }), hs = el('i', { class: 'ed-handle', title: 'Début' }), he = el('i', { class: 'ed-handle', title: 'Fin' }), head = el('i', { class: 'ed-head' });
+  track.append(selEl, hs, he, head);
   const time = el('span', { class: 'ed-time' });
-  const draw = () => { range.style.left = pct(st.start); range.style.width = (st.end - st.start) / dur() * 100 + '%'; hs.style.left = pct(st.start); he.style.left = pct(st.end); time.textContent = `${fmt(st.start)} → ${fmt(st.end)} · ${(st.end - st.start).toFixed(1)} s`; };
+  const draw = () => { selEl.style.left = pct(st.start); selEl.style.width = (st.end - st.start) / dur() * 100 + '%'; hs.style.left = pct(st.start); he.style.left = pct(st.end); time.textContent = `${fmt(st.start)} → ${fmt(st.end)} · ${(st.end - st.start).toFixed(1)} s`; };
   const setRange = (s, e) => { st.start = Math.max(0, Math.min(s, dur() - 0.5)); st.end = Math.min(dur(), Math.max(e, st.start + 0.5)); draw(); };
   const tAt = ev => { const r = track.getBoundingClientRect(); return Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * dur(); };
   const drag = which => ev => {
@@ -550,7 +550,7 @@ async function openEditor(name) {
   const list = el('div', { class: 'ed-moments' });
   const showMoments = () => {
     track.querySelectorAll('.ed-mark').forEach(m => m.remove());
-    for (const m of moments) track.insertBefore(el('b', { class: 'ed-mark', title: m.label, style: `left:${pct(m.start)};width:${(m.end - m.start) / dur() * 100}%` }), range);
+    for (const m of moments) track.insertBefore(el('b', { class: 'ed-mark', title: m.label, style: `left:${pct(m.start)};width:${(m.end - m.start) / dur() * 100}%` }), selEl);
     list.replaceChildren(...(moments.length ? moments.map(m => el('button', { class: 'pick', onclick: () => { setRange(m.start, m.end); video.currentTime = m.start; } }, el('b', {}, fmt(m.start)), ' ', m.label))
       : [el('span', { class: 'muted' }, 'Pas de moments détectés (vidéo exportée avant la 3.1) : choisis le passage avec les poignées.')]));
   };
