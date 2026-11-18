@@ -184,8 +184,90 @@ function exportScene() {
   exportTxt.textContent = e >= 1 ? 'Télécharger Dancing!' : e > 0 ? `Export en cours… ${Math.floor(e * 100)} %` : 'Exporter la vidéo';
 }
 
+// ---------- Presets : carrousel 3D (flèches, pastilles, clic, glisser, clavier, défilement auto) ----------
+(() => {
+  const cards = [...document.querySelectorAll('.pcard')], chips = [...document.querySelectorAll('.pchip')], box = document.getElementById('carousel');
+  if (!cards.length) return;
+  let cur = 0, auto = 0, hover = false;
+  const show = i => {
+    cur = (i + cards.length) % cards.length;
+    cards.forEach((c, k) => { let d = k - cur; if (d > cards.length / 2) d -= cards.length; if (d < -cards.length / 2) d += cards.length;
+      c.style.setProperty('--d', d); c.style.setProperty('--ad', Math.abs(d)); c.classList.toggle('on', d === 0); c.style.visibility = Math.abs(d) > 2 ? 'hidden' : ''; });
+    chips.forEach((c, k) => c.classList.toggle('on', k === cur));
+  };
+  box.querySelector('.prev').addEventListener('click', () => show(cur - 1));
+  box.querySelector('.next').addEventListener('click', () => show(cur + 1));
+  cards.forEach((c, k) => c.addEventListener('click', () => show(k)));
+  chips.forEach((c, k) => c.addEventListener('click', () => show(k)));
+  box.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') show(cur - 1); if (e.key === 'ArrowRight') show(cur + 1); });
+  let x0 = null; box.addEventListener('pointerdown', e => { x0 = e.clientX; }); box.addEventListener('pointerup', e => { if (x0 != null && Math.abs(e.clientX - x0) > 40) show(cur + (e.clientX < x0 ? 1 : -1)); x0 = null; });
+  box.addEventListener('pointerenter', () => { hover = true; }); box.addEventListener('pointerleave', () => { hover = false; });
+  show(0);
+  if (!calm && 'IntersectionObserver' in window) new IntersectionObserver(([e]) => { clearInterval(auto); if (e.isIntersecting) auto = setInterval(() => { if (!hover) show(cur + 1); }, 4200); }).observe(box);
+})();
+
+// ---------- En un coup d'œil : mini visuels animés quand la grille est visible ----------
+(() => {
+  const combo = document.getElementById('bvCombo'), pp = document.getElementById('bvPp'), err = document.getElementById('bvErr');
+  if (!combo) return;
+  let timers = [], c = 427, p = 538;
+  const start = () => {
+    if (timers.length || calm) return;
+    timers.push(setInterval(() => { c++; p += Math.random() < .5 ? 1 : 0; combo.textContent = c.toLocaleString('fr-FR'); pp.textContent = p; if (c > 999) c = 1; }, 140));
+    timers.push(setInterval(() => {
+      const t = document.createElement('i'); t.className = 't';
+      const e = (Math.random() + Math.random() + Math.random() - 1.5) * 26; t.style.left = `calc(50% + ${e.toFixed(1)}%)`;
+      err.appendChild(t); setTimeout(() => t.remove(), 1600);
+    }, 160));
+  };
+  const stop = () => { timers.forEach(clearInterval); timers = []; };
+  const cards = document.querySelectorAll('.bc, .eng');
+  if ('IntersectionObserver' in window) {
+    const seen = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); seen.unobserve(e.target); } }), { threshold: .4 });
+    cards.forEach(el => seen.observe(el));
+    new IntersectionObserver(([e]) => e.isIntersecting ? start() : stop()).observe(document.querySelector('.bento'));
+  } else { cards.forEach(el => el.classList.add('in')); start(); }
+})();
+
+// ---------- Éditeur : glisser les widgets, molette = taille, double-clic = position d'origine ----------
+(() => {
+  const frame = document.getElementById('edFrame'); if (!frame) return;
+  const ws = [...frame.querySelectorAll('.ed-w')], info = document.getElementById('edInfo'), gv = frame.querySelector('.ed-guide.v'), gh = frame.querySelector('.ed-guide.h');
+  const place = w => { w.style.left = w.dataset.cx + '%'; w.style.top = w.dataset.cy + '%'; w.style.width = (+w.dataset.w / 1920 * 100) + '%'; w.style.setProperty('--s', w.dataset.s); };
+  const reset = w => { w.dataset.cx = w.dataset.x; w.dataset.cy = w.dataset.y; w.dataset.s = 1; place(w); };
+  const say = w => { info.textContent = `${w.alt} · x ${Math.round(w.dataset.cx)} % · y ${Math.round(w.dataset.cy)} % · taille ${Math.round(w.dataset.s * 100)} %`; };
+  ws.forEach(w => {
+    reset(w);
+    w.addEventListener('pointerdown', e => {
+      e.preventDefault(); w.setPointerCapture(e.pointerId); w.classList.add('drag'); frame.appendChild(w);
+      const r = frame.getBoundingClientRect(), ox = e.clientX - (r.left + r.width * w.dataset.cx / 100), oy = e.clientY - (r.top + r.height * w.dataset.cy / 100);
+      const move = ev => {
+        let x = (ev.clientX - ox - r.left) / r.width * 100, y = (ev.clientY - oy - r.top) / r.height * 100;
+        x = clamp(x, 3, 97); y = clamp(y, 4, 92);
+        const sx = Math.abs(x - 50) < 1.5, sy = Math.abs(y - 50) < 2;       // aimantation au centre
+        if (sx) x = 50; if (sy) y = 50; gv.classList.toggle('on', sx); gh.classList.toggle('on', sy);
+        w.dataset.cx = x; w.dataset.cy = y; place(w); say(w);
+      };
+      const up = () => { w.classList.remove('drag'); gv.classList.remove('on'); gh.classList.remove('on'); w.removeEventListener('pointermove', move); w.removeEventListener('pointerup', up); };
+      w.addEventListener('pointermove', move); w.addEventListener('pointerup', up);
+    });
+    w.addEventListener('wheel', e => { e.preventDefault(); w.dataset.s = clamp(+w.dataset.s * (e.deltaY < 0 ? 1.08 : 1 / 1.08), .6, 1.8).toFixed(3); place(w); say(w); }, { passive: false });
+    w.addEventListener('dblclick', () => { reset(w); say(w); });
+  });
+  document.getElementById('edReset').addEventListener('click', () => { ws.forEach(reset); info.textContent = 'Disposition d’origine'; });
+})();
+
+// ---------- 3 étapes : la ligne se remplit au défilement, chaque étape s'allume ----------
+const s3 = document.querySelector('.s3'), s3Fill = document.getElementById('s3Fill'), s3c = [...document.querySelectorAll('.s3c')];
+function steps3() {
+  if (!s3) return;
+  const r = s3.getBoundingClientRect(), f = calm ? 1 : clamp((innerHeight * .75 - r.top) / (r.height + innerHeight * .1));
+  s3Fill.parentElement.style.setProperty('--f', f.toFixed(3));
+  s3c.forEach((c, i) => c.classList.toggle('on', f >= i / (s3c.length - 1) - .02));
+}
+
 let ticking = false;
-const frame = () => { ticking = false; anatomy(); gpu(); exportScene(); if (!calm) pile(); };
+const frame = () => { ticking = false; anatomy(); gpu(); exportScene(); steps3(); if (!calm) pile(); };
 const ask = () => { if (!ticking) { ticking = true; requestAnimationFrame(frame); } };
 addEventListener('scroll', ask, { passive: true });
 addEventListener('resize', ask);

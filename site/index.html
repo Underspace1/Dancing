@@ -27,7 +27,7 @@
       <a href="#anatomie">Anatomie</a>
       <a href="#capot">Sous le capot</a>
       <a href="#fonctions">Fonctions</a>
-      <a href="#fiche">Fiche technique</a>
+      <a href="#presets">Presets</a>
       <a href="#faq">Questions</a>
     </nav>
     <a class="btn btn-sm" href="https://github.com/Underspace1/Dancing/releases/latest" data-dl>Télécharger</a>
@@ -37,7 +37,7 @@
     <!-- Ouverture -->
     <section class="hero">
       <p class="pill"><span class="pill-dot" aria-hidden="true"></span>Gratuit pour Windows 10 et 11<span class="pill-ver" data-ver hidden></span></p>
-      <h1 class="hero-title">Tes replays osu!, montés comme une vidéo de tournoi.</h1>
+      <h1 class="hero-title">Tes replays osu!, <em class="hl">montés comme une vidéo de tournoi.</em></h1>
       <div class="hero-foot">
         <p class="lead">Glisse un .osr, choisis ton overlay, exporte. Dancing! rejoue la partie avec danser, dessine l’overlay image par image et sort une vidéo prête à poster.</p>
         <div class="cta">
@@ -47,8 +47,17 @@
           </a>
           <a class="link" href="#film">Voir le résultat <span aria-hidden="true">↓</span></a>
         </div>
+        <ul class="checks">
+          <li>Un seul fichier, rien d’autre à installer</li>
+          <li>Mises à jour en un clic</li>
+          <li>Windows 10 et 11 · 64 bits</li>
+        </ul>
       </div>
     </section>
+
+    <div class="compat" aria-label="Compatible avec">
+      <span>danser</span><i></i><span>tosu</span><i></i><span>ffmpeg</span><i></i><span>osu! stable &amp; lazer</span><i></i><span>OBS</span><i></i><span>TikTok</span>
+    </div>
 
     <!-- Anatomie : l'image se démonte en couches au défilement -->
     <section class="anat" id="anatomie" aria-label="Anatomie d’une image Dancing!">
@@ -99,7 +108,7 @@
         </aside>
         <div class="gpu-head">
           <p class="mono label">Sous le capot</p>
-          <h2 class="title">Ce que fait ta carte graphique pendant un rendu.</h2>
+          <h2 class="title">Ce que fait ta carte graphique <em class="hl">pendant un rendu.</em></h2>
         </div>
         <div class="gpu-panel">
           <div class="gpu-bars" aria-hidden="true"><i data-c="0"></i><i data-c="1"></i><i data-c="2"></i><i data-c="3"></i><i data-c="4"></i><i data-c="5"></i><i data-c="6"></i></div>
@@ -118,9 +127,9 @@
 
     <!-- Le résultat -->
     <section class="film paper" id="film">
-      <div class="section-head">
+      <div class="section-head" data-num="01">
         <p class="mono label">Le résultat</p>
-        <h2 class="title">Intro, partie, écran de fin. Sans montage.</h2>
+        <h2 class="title">Intro, partie, écran de fin. <em class="hl">Sans montage.</em></h2>
       </div>
       <figure class="reel" id="reel">
         <video src="assets/pub.mp4" poster="assets/pub-poster.jpg" muted loop playsinline preload="metadata" aria-label="Vidéo de présentation de Dancing!"></video>
@@ -132,13 +141,65 @@
       </figure>
     </section>
 
+    <!-- Presets : carrousel 3D des presets intégrés, rendus par le moteur de l'appli -->
+    <section class="presets" id="presets">
+      <div class="section-head" data-num="02">
+        <p class="mono label">Presets</p>
+        <h2 class="title">Six styles prêts à l’emploi, <em class="hl">ou le tien.</em></h2>
+        <p class="lead">Chaque preset recolore tout l’overlay d’un clic : bandeau, panneaux, jugements, touches. Ensuite, tout se règle à la souris.</p>
+      </div>
+      <div class="carousel" id="carousel" tabindex="0" aria-label="Presets d’overlay, flèches gauche et droite pour changer">
+        <div class="cstage">
+          <figure class="pcard" data-i="0"><img src="assets/preset-cpol.jpg" width="1280" height="720" loading="lazy" alt="Overlay Dancing! avec le preset Référence"><figcaption><b>Référence</b><span>Le bandeau de tournoi d’origine, au pixel près.</span><i class="sw"><em style="background:#d9dde4"></em><em style="background:#2a2c31"></em><em style="background:#7fe0a8"></em></i></figcaption></figure>
+          <figure class="pcard" data-i="1"><img src="assets/preset-neon.jpg" width="1280" height="720" loading="lazy" alt="Overlay Dancing! avec le preset Néon"><figcaption><b>Néon</b><span>Rose électrique et halo marqué.</span><i class="sw"><em style="background:#ff4fa3"></em><em style="background:#2b1631"></em><em style="background:#4fd8ff"></em></i></figcaption></figure>
+          <figure class="pcard" data-i="2"><img src="assets/preset-glacier.jpg" width="1280" height="720" loading="lazy" alt="Overlay Dancing! avec le preset Glacier"><figcaption><b>Glacier</b><span>Bleus froids, halo discret.</span><i class="sw"><em style="background:#a9d8ff"></em><em style="background:#2f4257"></em><em style="background:#7cc8ff"></em></i></figcaption></figure>
+          <figure class="pcard" data-i="3"><img src="assets/preset-ambre.jpg" width="1280" height="720" loading="lazy" alt="Overlay Dancing! avec le preset Ambre"><figcaption><b>Ambre</b><span>Orangés chauds, ambiance coucher de soleil.</span><i class="sw"><em style="background:#ffb547"></em><em style="background:#4a3420"></em><em style="background:#ffcf6b"></em></i></figcaption></figure>
+          <figure class="pcard" data-i="4"><img src="assets/preset-tournoi.jpg" width="1280" height="720" loading="lazy" alt="Overlay Dancing! avec le preset Tournoi"><figcaption><b>Tournoi</b><span>Tube droit, panneaux arrondis, sans halo.</span><i class="sw"><em style="background:#e9ecf1"></em><em style="background:#1d1f24"></em><em style="background:#7a7f88"></em></i></figcaption></figure>
+          <figure class="pcard" data-i="5"><img src="assets/preset-mono.jpg" width="1280" height="720" loading="lazy" alt="Overlay Dancing! avec le preset Monochrome"><figcaption><b>Monochrome</b><span>Noir et blanc, pour les montages sobres.</span><i class="sw"><em style="background:#f4f4f6"></em><em style="background:#3a3a40"></em><em style="background:#7a7a80"></em></i></figcaption></figure>
+        </div>
+        <button type="button" class="cnav prev" aria-label="Preset précédent">‹</button>
+        <button type="button" class="cnav next" aria-label="Preset suivant">›</button>
+      </div>
+      <div class="pchips" role="group" aria-label="Choisir un preset">
+          <button type="button" class="pchip" data-i="0"><em style="background:#d9dde4"></em>Référence</button>
+          <button type="button" class="pchip" data-i="1"><em style="background:#ff4fa3"></em>Néon</button>
+          <button type="button" class="pchip" data-i="2"><em style="background:#a9d8ff"></em>Glacier</button>
+          <button type="button" class="pchip" data-i="3"><em style="background:#ffb547"></em>Ambre</button>
+          <button type="button" class="pchip" data-i="4"><em style="background:#e9ecf1"></em>Tournoi</button>
+          <button type="button" class="pchip" data-i="5"><em style="background:#f4f4f6"></em>Monochrome</button>
+      </div>
+    </section>
+
+    <!-- En un coup d'œil : grille de cartes avec mini visuels animés -->
+    <section class="glance" id="apercu">
+      <div class="section-head" data-num="03">
+        <p class="mono label">En un coup d’œil</p>
+        <h2 class="title">Tout ce qui fait une vidéo, <em class="hl">au même endroit.</em></h2>
+      </div>
+      <div class="bento">
+        <article class="bc bc-wide"><div class="bv bv-combo"><span class="mono">Combo</span><b id="bvCombo">427</b><span class="x">×</span><span class="mono">pp</span><b id="bvPp">538</b></div><h3>Combo et pp en direct</h3><p>Les chiffres défilent à chaque note, le pp « si FC » à côté.</p></article>
+        <article class="bc"><div class="bv bv-err" id="bvErr"><i class="c"></i></div><h3>Barre d’erreur</h3><p>Chaque frappe s’affiche, à la milliseconde près.</p></article>
+        <article class="bc"><div class="bv bv-board"><div class="row"><span>4</span>lumen<b>875pp</b></div><div class="row me"><span>5</span>Toi<b>862pp</b></div><div class="row"><span>6</span>Orbit<b>814pp</b></div></div><h3>Classement de la map</h3><p>Le top 50 global, et ta place qui monte en direct.</p></article>
+        <article class="bc"><div class="bv bv-mania"><i></i><i></i><i></i><i></i></div><h3>osu!mania</h3><p>Moteur maison et trois overlays dédiés.</p></article>
+        <article class="bc"><div class="bv bv-grade"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle class="arc" cx="50" cy="50" r="42"/></svg><b>S</b><span>98,42 %</span></div><h3>Écran de fin</h3><p>Ta note dans un cercle en verre, le score détaillé.</p></article>
+        <article class="bc"><div class="bv bv-clip"><div class="phone"><img src="assets/overlay.jpg" alt="" loading="lazy"><i></i></div></div><h3>Clips verticaux</h3><p>Moments forts détectés, export 1080 × 1920.</p></article>
+        <article class="bc"><div class="bv bv-live"><span class="live"><i></i>En direct</span><div class="win"><img src="assets/preset-neon.jpg" alt="" loading="lazy"></div><span class="mono">OBS · source navigateur</span></div><h3>Le même overlay pendant que tu joues</h3><p>Via tosu, dans OBS, avec ton preset et tes widgets.</p></article>
+      </div>
+      <div class="stats">
+        <div><b>10</b><span>presets d’overlay</span></div>
+        <div><b>26</b><span>données pour tes widgets</span></div>
+        <div><b>9</b><span>widgets en verre</span></div>
+        <div><b>3</b><span>overlays osu!mania</span></div>
+      </div>
+    </section>
+
     <!-- Fonctions : dossiers qui s'additionnent ; chaque dossier tombe sur la pile, sa feuille dépasse, les précédents se referment -->
     <section class="files" id="fonctions" style="--n:5">
       <div class="files-pin">
         <div class="files-side">
-          <div class="section-head">
+          <div class="section-head" data-num="04">
             <p class="mono label">Fonctions</p>
-            <h2 class="title">Tout ce qu’il faut pour une vidéo propre.</h2>
+            <h2 class="title">Tout ce qu’il faut pour <em class="hl">une vidéo propre.</em></h2>
           </div>
           <ol class="chapters" aria-label="Fonctions">
             <li><button type="button" data-go="0"><span class="mono">01</span>Overlay<i aria-hidden="true"></i></button></li>
@@ -184,11 +245,59 @@
       </div>
     </section>
 
+    <!-- Éditeur : on déplace les widgets sur une image de jeu, comme dans l'appli -->
+    <section class="editor" id="editeur">
+      <div class="section-head" data-num="05">
+        <p class="mono label">Essaie-le</p>
+        <h2 class="title">Place tes widgets <em class="hl">à la souris.</em></h2>
+        <p class="lead">Comme dans l’éditeur de disposition de Dancing! : glisse un widget, la molette change sa taille, double-clic pour le remettre en place.</p>
+      </div>
+      <div class="ed-frame" id="edFrame">
+        <img class="ed-bg" src="assets/layer-replay.webp" width="1600" height="900" alt="Image de jeu sur laquelle déplacer les widgets">
+        <i class="ed-guide v"></i><i class="ed-guide h"></i>
+        <img class="ed-w" src="assets/widget-pp.png" data-x="78" data-y="30" data-w="216" alt="Widget pp" draggable="false">
+        <img class="ed-w" src="assets/widget-accuracy.png" data-x="76" data-y="42" data-w="236" alt="Widget précision" draggable="false">
+        <img class="ed-w" src="assets/widget-combo.png" data-x="6" data-y="82" data-w="176" alt="Widget combo" draggable="false">
+        <img class="ed-w" src="assets/widget-timing.png" data-x="42" data-y="84" data-w="190" alt="Widget stabilité" draggable="false">
+        <div class="ed-bar mono"><span id="edInfo">Glisse un widget</span><button type="button" id="edReset">Réinitialiser</button></div>
+      </div>
+    </section>
+
+    <!-- Encodeurs : où se fait l'encodage, à titre indicatif -->
+    <section class="engines" id="encodeurs">
+      <div class="section-head" data-num="06">
+        <p class="mono label">Encodeurs</p>
+        <h2 class="title">Ta carte encode, <em class="hl">ou ton processeur.</em></h2>
+        <p class="lead">Dancing! prend l’encodeur de ta carte graphique quand il existe. Les barres sont indicatives : la vitesse réelle dépend de ton matériel.</p>
+      </div>
+      <div class="eng-list">
+        <div class="eng"><b>NVIDIA NVENC</b><span class="tag t-gpu">carte graphique</span><p>H.264 et H.265, le plus rapide sur une carte NVIDIA.</p><span class="meter"><i style="--v:.95"></i></span><span class="mono">très rapide</span></div>
+        <div class="eng"><b>AMD AMF</b><span class="tag t-gpu">carte graphique</span><p>L’équivalent chez AMD, sans charger le processeur.</p><span class="meter"><i style="--v:.85"></i></span><span class="mono">rapide</span></div>
+        <div class="eng"><b>Intel QSV</b><span class="tag t-gpu">puce Intel</span><p>Sur les processeurs Intel avec graphique intégré et les cartes Arc.</p><span class="meter"><i style="--v:.8"></i></span><span class="mono">rapide</span></div>
+        <div class="eng"><b>x264</b><span class="tag t-cpu">processeur</span><p>Le choix sûr, partout. Rendu en tranches sur tous les cœurs.</p><span class="meter"><i style="--v:.55"></i></span><span class="mono">moyen</span></div>
+        <div class="eng"><b>x265</b><span class="tag t-cpu">processeur</span><p>Fichiers plus légers à qualité égale, mais plus lent.</p><span class="meter"><i style="--v:.3"></i></span><span class="mono">lent</span></div>
+      </div>
+    </section>
+
+    <!-- Démarrer en 3 étapes : la ligne se remplit au défilement -->
+    <section class="steps3" id="demarrer">
+      <div class="section-head" data-num="07">
+        <p class="mono label">Démarrer</p>
+        <h2 class="title">Ta première vidéo <em class="hl">en 3 étapes.</em></h2>
+      </div>
+      <div class="s3">
+        <span class="s3-line"><i id="s3Fill"></i></span>
+        <div class="s3c"><i>1</i><h3>Installe</h3><p>Télécharge <span class="mono">Dancing!-Setup.exe</span> et lance-le. Il trouve tout seul ton dossier osu!.</p></div>
+        <div class="s3c"><i>2</i><h3>Choisis</h3><p>Un replay dans la liste ou un .osr déposé, puis un preset. Vérifie avec l’aperçu de 12 s.</p></div>
+        <div class="s3c"><i>3</i><h3>Exporte</h3><p>La vidéo arrive dans le dossier <span class="mono">videos/</span>, prête à poster.</p></div>
+      </div>
+    </section>
+
     <!-- Fiche technique -->
     <section class="spec paper" id="fiche">
-      <div class="section-head">
+      <div class="section-head" data-num="08">
         <p class="mono label">Fiche technique</p>
-        <h2 class="title">Dans le détail.</h2>
+        <h2 class="title">Dans <em class="hl">le détail.</em></h2>
       </div>
       <dl class="spec-list">
         <div><dt>Rendu</dt><dd>danser-go, jusqu’en 4K et 240 i/s, flou de mouvement sur GPU</dd></div>
@@ -206,9 +315,9 @@
 
     <!-- Questions -->
     <section class="faq paper" id="faq">
-      <div class="section-head">
+      <div class="section-head" data-num="09">
         <p class="mono label">Questions</p>
-        <h2 class="title">Avant de télécharger.</h2>
+        <h2 class="title">Avant de <em class="hl">télécharger.</em></h2>
       </div>
       <div class="faq-list">
         <details><summary>Dancing!, c’est quoi exactement ?</summary><p>Un logiciel Windows qui prend un replay osu! (.osr) et en fait une vidéo prête à poster : le jeu rendu par danser, un overlay animé par-dessus, une intro et un écran de résultats.</p></details>
@@ -226,7 +335,7 @@
       <div class="studio-pin">
         <div class="studio-head">
           <p class="mono label">Windows 10 / 11 · gratuit</p>
-          <h2 class="title">Ton prochain replay, prêt à poster.</h2>
+          <h2 class="title">Ton prochain replay, <em class="hl">prêt à poster.</em></h2>
         </div>
         <div class="studio-app">
           <div class="monitor">
