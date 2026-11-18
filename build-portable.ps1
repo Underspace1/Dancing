@@ -59,7 +59,7 @@ foreach ($name in $danserFiles) {
 }
 Get-ChildItem -LiteralPath (Join-Path $danser 'ffmpeg') -File | Copy-Item -Destination (Join-Path $danserOut 'ffmpeg')
 $profile | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath (Join-Path $danserOut 'settings/default.json') -Encoding UTF8
-foreach ($name in @('server.mjs', 'compose.mjs', 'extras.mjs', 'package.json', 'web', 'node_modules', 'README.md')) {
+foreach ($name in @('server.mjs', 'compose.mjs', 'segments.mjs', 'extras.mjs', 'package.json', 'web', 'node_modules', 'README.md')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $OutputDirectory -Recurse
 }
 Get-Item -LiteralPath (Join-Path $OutputDirectory 'Dancing!.exe')

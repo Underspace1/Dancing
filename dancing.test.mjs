@@ -142,3 +142,28 @@ test('clip vertical dédié : vidéo danser 1080x1920 posée telle quelle, sans 
   assert(s.includes('scale=1080:1920:force_original_aspect_ratio=decrease') && !s.includes('bg.rgba') && !s.includes('fr.rgba'));
   assert(s.includes('[4:v]loop') && s.includes('setpts=PTS+2.600/TB[cap]'));
 });
+
+test('rendu parallèle : tranches jointives, alignées sur les deux cadences, sans image perdue', async () => {
+  const { splitRange, alignStep, parseColor, setparams } = await import('./segments.mjs');
+  const { planSegments } = await import('./compose.mjs');
+  for (const [a, b, parts, align] of [[0, 1800, 4, 1], [270, 2070, 6, 5], [0, 7, 4, 1], [10, 11, 3, 1]]) {
+    const r = splitRange(a, b, parts, { align, min: 2 });
+    assert.equal(r[0][0], a); assert.equal(r.at(-1)[1], b);
+    r.forEach(([x, y], i) => { assert(y > x); if (i) assert.equal(x, r[i - 1][1]); if (i < r.length - 1) assert.equal((y - a) % align, 0); });
+  }
+  assert.equal(alignStep(60, 60), 1); assert.equal(alignStep(144, 60), 5); assert.equal(alignStep(59.94, 60), 0);
+  // 144 i/s de vidéo, overlay à 60 i/s : chaque coupe tombe sur une image commune, la vidéo danser est couverte en entier
+  const L = { fps: 60, ratio: 2.4, videoFrames: 4321, total: Math.floor(4321 / 2.4), I: 4.5, O: 8, nI: 270, nO: 480 };
+  L.all = L.nI + L.total + L.nO;
+  const segs = planSegments({ fps: 144 }, L, 3), game = segs.filter(s => s.kind === 'game');
+  assert.equal(segs[0].kind, 'intro'); assert.equal(segs.at(-1).kind, 'outro'); assert(game.length > 1);
+  assert.equal(game.reduce((n, s) => n + s.count, 0), 4321);
+  game.forEach((s, i) => { assert(Number.isInteger(s.A)); if (i) assert.equal(s.A, game[i - 1].A + game[i - 1].count); });
+  segs.forEach((s, i) => { if (i) assert.equal(s.oa, segs[i - 1].ob); });
+  assert.equal(segs.at(-1).ob, L.all);
+  // étiquettes de couleur lues dans « ffmpeg -i »
+  assert.deepEqual(parseColor('Stream #0:0: Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080'), { range: 'tv', colorspace: 'bt709', primaries: 'bt709', trc: 'bt709' });
+  assert.deepEqual(parseColor('Video: h264, yuv420p(tv, bt470bg/unknown/unknown, progressive)'), { range: 'tv', colorspace: 'bt470bg' });
+  assert.equal(parseColor('Video: h264 (High), yuv420p, 1920x1080'), null);
+  assert.equal(setparams({ range: 'tv' }), ',setparams=range=tv');
+});

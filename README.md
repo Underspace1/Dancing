@@ -48,6 +48,7 @@ Dancing! est une application Tauri autour d'une interface web servie par `server
 |---|---|
 | `server.mjs` | serveur local : replays, rendu, réglages, API osu! |
 | `compose.mjs` | redessine l'overlay image par image et le fusionne à la vidéo de danser (ffmpeg) |
+| `segments.mjs` | rendu en tranches parallèles, recollées sans réencodage |
 | `web/hud.js` | moteur de dessin unique (vidéo, aperçu, overlay tosu) |
 | `web/scenes.js` | intro et écrans de fin |
 | `extras.mjs` | widgets tosu, store, compte osu!, mises à jour |

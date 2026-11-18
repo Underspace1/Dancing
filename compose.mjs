@@ -1,6 +1,7 @@
 // Composites the Replay HUD overlay onto a danser recording.
 //   node compose.mjs <job.json>
-// job: { export, video, out, ffmpeg, hud:{...overlay cfg}, size:[w,h], fps, oversample, encoder, crf, cache, png? }
+// job: { export, video, out, ffmpeg, hud:{...overlay cfg}, size:[w,h], fps, oversample, encoder, crf, cache, png?, workers? }
+// Le rendu est découpé en tranches rendues en parallèle (node compose.mjs --segment <segments.json> <n>), puis recollées.
 // With job.png = { t, file } it writes a single PNG of the overlay at map time t instead.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import { drawIntro, drawOutro, prepareBackdrop } from './web/scenes.js';
 import { tosuMessages } from './web/tosu-emu.js';
 import { findMoments, toVideoTime } from './clips.mjs';
 import { dancingWidget, drawDancingWidgets } from './web/dancing-widgets.js';
+import { workerCount, splitRange, alignStep, runSegments, writeConcatList, pipeFrames, runFfmpeg, probeColor, setparams } from './segments.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fontDir = path.join(here, 'node_modules', '@fontsource', 'nunito', 'files');
@@ -51,7 +53,7 @@ export async function loadAssets(data, job) {
 
 // H.265 : étiquette « hvc1 » (et non « hev1 ») pour que QuickTime, iPhone et TikTok le reconnaissent
 export function encoderArgs(job) { const a = encoderArgsBase(job); return /hevc|265/.test(job.encoder || '') ? [...a, '-tag:v', 'hvc1'] : a; }
-function encoderArgsBase(job) {
+export function encoderArgsBase(job) {
   const enc = job.encoder || 'libx264', q = String(job.crf ?? 18);
   if (enc === 'libx264') return ['-c:v', 'libx264', '-preset', job.preset || 'veryfast', '-crf', q];
   if (enc === 'libx265') return ['-c:v', 'libx265', '-preset', job.preset || 'fast', '-crf', q];
@@ -122,6 +124,8 @@ export async function openStage(job, vw, vh, s) {
       const { data } = await cdp('Page.captureScreenshot', { format: 'png', clip: clipBox, fromSurface: true, optimizeForSpeed: true });
       return { img: await loadImage(Buffer.from(data, 'base64')), x: clipBox.x, y: clipBox.y };
     },
+    // fait avancer les widgets sans capture (préchauffage d'une tranche)
+    async feed(t, msgs) { await ev(`__stage.frame(${t}, ${JSON.stringify(msgs)})`); },
     close,
   };
   } catch (error) { close(); throw error; }
@@ -213,6 +217,99 @@ export function glassChain(job, inputs, vw, vh, s, label) {
   return { chain, out: cur, cleanup: () => files.forEach(f => fs.rmSync(f, { force: true })) };
 }
 
+// Découpage commun au chef d'orchestre et aux tranches : images d'overlay (fps) et de la vidéo danser (job.fps).
+function layout(job, data) {
+  const fps = job.overlayFps || job.fps, ratio = job.fps / fps, m = Math.max(1, job.oversample || 1);
+  const frames = data.frames, videoFrames = Math.floor(frames.length / m), total = Math.floor(videoFrames / ratio);
+  const sc = job.scenes || {}, I = sc.intro > 0 ? sc.intro : 0, O = sc.outro > 0 ? sc.outro : 0;
+  const nI = Math.round(I * fps), nO = Math.round(O * fps), G = videoFrames / job.fps;
+  return { fps, ratio, m, frames, videoFrames, total, sc, I, O, nI, nO, G, all: nI + total + nO };
+}
+
+// Tranches de la vidéo finale : intro, morceaux du replay, fin. oa/ob : images d'overlay ; count : images de sortie ;
+// A : première image de la vidéo danser (replay). Les coupes du replay tombent sur des images communes aux deux cadences.
+export function planSegments(job, L, workers) {
+  const segs = [];
+  if (L.nI > 0) segs.push({ kind: 'intro', oa: 0, ob: L.nI, count: Math.max(1, Math.round(L.I * job.fps)) });
+  const K = alignStep(job.fps, L.fps);
+  const parts = K ? splitRange(L.nI, L.nI + L.total, workers * 2, { align: K, min: Math.max(K, Math.round(L.fps * 5)) }) : [[L.nI, L.nI + L.total]];
+  parts.forEach(([oa, ob], k) => {
+    const A = Math.round((oa - L.nI) * L.ratio), B = k === parts.length - 1 ? L.videoFrames : Math.round((ob - L.nI) * L.ratio);
+    if (B > A) segs.push({ kind: 'game', oa, ob, A, count: B - A });
+  });
+  if (L.nO > 0) segs.push({ kind: 'outro', oa: L.nI + L.total, ob: L.all, count: Math.max(1, Math.round(L.O * job.fps)) });
+  return segs;
+}
+
+// Une tranche : dessine ses images d'overlay et les fusionne à sa partie de la vidéo danser dans son propre ffmpeg.
+async function segmentMain(jobFile, index) {
+  const job = JSON.parse(fs.readFileSync(jobFile, 'utf8'));
+  const data = JSON.parse(fs.readFileSync(job.export, 'utf8'));
+  const seg = job.segments[index], L = layout(job, data), { fps, ratio, m, frames, videoFrames, I, O, nI, total } = L;
+  const assets = await loadAssets(data, job);
+  const tl = new Timeline(data, { avatars: assets.avatars, playerAvatar: assets.avatar, countryRank: job.hud?.countryRank, globalRank: job.hud?.globalRank, board: job.board, playedAt: job.playedAt, playedIso: job.playedIso });
+  const sort = job.hud?.boardSort || 'pp', meta = data.meta;
+  const [vw, vh] = job.size, s = vw / W;
+  const cv = createCanvas(vw, vh), g = cv.getContext('2d');
+  const hud = new HUD(job.hud, assets);
+  const info = { meta, player: meta.player, mods: modList(meta.mods), bpm: tl.at(meta.start).bpm, countryRank: job.hud?.countryRank, globalRank: job.hud?.globalRank, settings: job.introSettings };
+  const summary = O ? { ...tl.summary(), player: meta.player } : null;
+  const widgets = job.tosu || [], game = seg.kind === 'game';
+  const external = game ? widgets.filter(w => !dancingWidget(w.folder)) : [];
+  const bundled = widgets.filter(w => dancingWidget(w.folder));
+  let stage = external.length ? await openStage({ ...job, tosu: external }, vw, vh, s).catch(e => { log({ warn: 'Widgets tosu ignorés : ' + e.message }); return null; }) : null;
+  const tosuEvery = Math.max(1, Math.round(fps / (job.tosuFps || 30)));
+  let shot = null;
+  const stateAt = j => { const t = frames[Math.min(videoFrames - 1, Math.round(j * ratio)) * m + (m >> 1)], st = tl.at(t, sort); st.since = j * 1000 / fps; return { t, st }; };
+  const tosuMsgs = (st, t) => {
+    const at = Timeline.idx(tl.errs, t), errs = tl.errs.slice(Math.max(0, at - 199), at + 1).map(e => e.e);
+    return tosuMessages(st, meta, { board: st.board, hitErrors: errs, country: job.hud?.country });
+  };
+  // Le HUD lisse ses valeurs d'une image à l'autre : une tranche du replay rejoue d'abord 2 s sans les envoyer à ffmpeg.
+  if (game && seg.oa > nI) {
+    for (let i = Math.max(nI, seg.oa - Math.round(fps * 2)); i < seg.oa; i++) {
+      const j = i - nI, { t, st } = stateAt(j);
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, vw, vh); g.setTransform(s, 0, 0, s, 0, 0);
+      hud.draw(g, st, j * 1000 / fps);
+      if (stage && j % tosuEvery === 0) await stage.feed(j * 1000 / fps, tosuMsgs(st, t)).catch(() => {});
+    }
+  }
+  const draw = async i => {
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, vw, vh); g.setTransform(s, 0, 0, s, 0, 0);
+    if (i < nI) drawIntro(g, i / fps, I, info, assets, job.hud);
+    else if (i >= nI + total) drawOutro(g, (i - nI - total) / fps, O, summary, assets, job.hud);
+    else {
+      const j = i - nI, { t, st } = stateAt(j);
+      hud.draw(g, st, j * 1000 / fps);
+      if (bundled.length) drawDancingWidgets(g, bundled, tosuMessages(st, meta, { board: st.board }));
+      if (stage) {
+        if (j % tosuEvery === 0 || !shot) {
+          try { shot = await stage.frame(j * 1000 / fps, tosuMsgs(st, t)); }
+          catch (e) { log({ warn: 'Capture des widgets interrompue : ' + e.message }); stage.close(); stage = null; shot = null; }
+        }
+        if (shot) { g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(shot.img, shot.x, shot.y); }
+      }
+    }
+    return Buffer.from(g.getImageData(0, 0, vw, vh).data.buffer);
+  };
+
+  // Fond de la tranche : la vidéo danser (cherchée à l'image près) ou du noir pour l'intro et la fin.
+  const inputs = [];
+  if (game) { if (seg.A > 0) inputs.push('-ss', ((seg.A - 0.5) / job.fps).toFixed(6)); inputs.push('-i', job.video); }
+  inputs.push('-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${vw}x${vh}`, '-r', String(fps), '-i', 'pipe:0');
+  const color = setparams(job.color), ov = game ? '[1:v]' : '[0:v]';
+  let fc, cleanup;
+  if (game) {
+    const glass = glassChain(job, inputs, vw, vh, s, '[g0]');
+    fc = `[0:v]setpts=PTS-STARTPTS[g0];${glass.chain}${glass.out}${ov}overlay=0:0:format=auto:eof_action=repeat,format=yuv420p${color}[v]`;
+    cleanup = glass.cleanup;
+  } else fc = `color=c=black:s=${vw}x${vh}:r=${job.fps},format=yuv420p[bk];[bk]${ov}overlay=0:0:format=auto:eof_action=repeat,format=yuv420p${color}[v]`;
+  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...inputs, '-filter_complex', fc, '-map', '[v]', '-an', ...encoderArgsBase(job), '-frames:v', String(seg.count), '-f', 'mpegts', seg.file];
+  try {
+    await pipeFrames(job.ffmpeg, args, seg.ob - seg.oa, k => draw(seg.oa + k), k => { if (k % 15 === 0 || k === seg.ob - seg.oa) log({ frame: k }); });
+  } finally { stage?.close(); cleanup?.(); }
+}
+
 async function main() {
   const job = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
   const data = JSON.parse(fs.readFileSync(job.export, 'utf8'));
@@ -230,83 +327,42 @@ async function main() {
     return log({ done: true, file: job.png.file });
   }
 
-  const [vw, vh] = job.size, fps = job.overlayFps || job.fps, ratio = job.fps / fps, m = Math.max(1, job.oversample || 1);
-  const frames = data.frames, videoFrames = Math.floor(frames.length / m), total = Math.floor(videoFrames / ratio);
-  const cv = createCanvas(vw, vh), g = cv.getContext('2d'), s = vw / W;
-  const t0 = Date.now();
+  const t0 = Date.now(), L = layout(job, data), { fps, m, frames, videoFrames, I, O, nI, G, all } = L, meta = data.meta;
+  // Rendu en tranches parallèles (segments.mjs), recollées sans réencodage ; le son est ajouté au recollage.
+  // tranches à côté du fichier de tâche (data/work), pas dans le dossier des vidéos
+  const workers = workerCount(job), base = path.join(path.dirname(path.resolve(process.argv[2])), path.basename(job.out).replace(/\.[^.]+$/, ''));
+  const segments = planSegments(job, L, workers).map((sg, k) => ({ ...sg, file: `${base}.part${k}.ts` }));
+  const color = await probeColor(job.ffmpeg, job.video);
+  const segJob = process.argv[2].replace(/\.json$/, '') + '.segments.json', list = base + '.parts.txt';
+  fs.writeFileSync(segJob, JSON.stringify({ ...job, segments, color }));
+  const clean = () => { for (const f of [segJob, list, ...segments.map(sg => sg.file)]) fs.rmSync(f, { force: true }); };
+  try {
+    log({ info: `Rendu en ${segments.length} tranches, ${Math.min(workers, segments.length)} en parallèle` });
+    await runSegments(segments, workers, i => spawn(process.execPath, [fileURLToPath(import.meta.url), '--segment', segJob, String(i)], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }), {
+      onProgress: (p, n) => log({ progress: p * 0.97, frame: n, total: all, fps: n / ((Date.now() - t0) / 1000 + 1e-9) }),
+      onLine: o => log(o),
+    });
 
-  // Optional intro/results scenes around the gameplay: the danser video is padded with black and our
-  // frames are opaque there. The map's audio (from its preview point) plays under both, with fades.
-  const sc = job.scenes || {}, I = sc.intro > 0 ? sc.intro : 0, O = sc.outro > 0 ? sc.outro : 0;
-  const nI = Math.round(I * fps), nO = Math.round(O * fps), G = videoFrames / job.fps, meta = data.meta;
-  // job.audio: WAV excerpt decoded by danser from the map's preview point (its ffmpeg cannot read mp3/ogg)
-  const audioFile = job.audio || null;
-  const music = sc.music !== false && audioFile && fs.existsSync(audioFile) && (I || O);
-  const pv = 0, vol = sc.volume ?? 0.6;
-  const inputs = ['-i', job.video, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${vw}x${vh}`, '-r', String(fps), '-i', 'pipe:0'];
-  const pre = I || O ? `[0:v]tpad=start_duration=${I}:stop_duration=${O}:start_mode=add:stop_mode=add:color=black[g0];` : '';
-  let fc = '<GAME>[1:v]';
-  fc += 'overlay=0:0:format=auto:eof_action=repeat,format=yuv420p[v]';
-  let amap = ['-map', '0:a?', '-c:a', 'copy'];
-  if (I || O) {
-    // danser's ffmpeg cannot decode AAC: danser also writes its mixed audio as raw PCM (job.pcm), which we mix here
-    if (job.pcm && fs.existsSync(job.pcm)) {
+    // Recollage : vidéo copiée telle quelle, son de danser (et musique de la map sur l'intro et la fin) mixé ici.
+    writeConcatList(list, segments.map(sg => sg.file));
+    const inputs = ['-f', 'concat', '-safe', '0', '-i', list];
+    const music = L.sc.music !== false && job.audio && fs.existsSync(job.audio) && (I || O), pv = 0, vol = L.sc.volume ?? 0.6;
+    let fc = '', amap;
+    if (!I && !O) { inputs.push('-i', job.video); amap = ['-map', '1:a?', '-c:a', 'copy']; }
+    else if (job.pcm && fs.existsSync(job.pcm)) {
+      // danser's ffmpeg cannot decode AAC: danser also writes its mixed audio as raw PCM (job.pcm), which we mix here
       inputs.push('-f', 'f32le', '-ar', '48000', '-ac', '2', '-i', job.pcm);
-      const mix = [`[2:a]adelay=${Math.round(I * 1000)}:all=1[ga]`], lab = ['[ga]'];
-      if (music && I) { inputs.push('-ss', String(pv), '-t', String(I + 0.5), '-i', audioFile); mix.push(`[3:a]atrim=0:${I},afade=t=in:d=0.6,afade=t=out:st=${Math.max(0, I - 0.9)}:d=0.9,volume=${vol}[ia]`); lab.push('[ia]'); }
-      if (music && O) { const k = 3 + (I ? 1 : 0); inputs.push('-ss', String(pv + Math.max(0, Math.min(I, 30 - O))), '-t', String(O + 0.5), '-i', audioFile); mix.push(`[${k}:a]atrim=0:${O},afade=t=in:d=1.2,afade=t=out:st=${Math.max(0, O - 1.5)}:d=1.5,volume=${vol},adelay=${Math.round((I + G) * 1000)}:all=1[oa]`); lab.push('[oa]'); }
-      fc += ';' + mix.join(';') + `;${lab.join('')}amix=inputs=${lab.length}:normalize=0:duration=longest[a]`;
+      const mix = [`[1:a]adelay=${Math.round(I * 1000)}:all=1[ga]`], lab = ['[ga]'];
+      if (music && I) { inputs.push('-ss', String(pv), '-t', String(I + 0.5), '-i', job.audio); mix.push(`[2:a]atrim=0:${I},afade=t=in:d=0.6,afade=t=out:st=${Math.max(0, I - 0.9)}:d=0.9,volume=${vol}[ia]`); lab.push('[ia]'); }
+      if (music && O) { const k = 2 + (I ? 1 : 0); inputs.push('-ss', String(pv + Math.max(0, Math.min(I, 30 - O))), '-t', String(O + 0.5), '-i', job.audio); mix.push(`[${k}:a]atrim=0:${O},afade=t=in:d=1.2,afade=t=out:st=${Math.max(0, O - 1.5)}:d=1.5,volume=${vol},adelay=${Math.round((I + G) * 1000)}:all=1[oa]`); lab.push('[oa]'); }
+      fc = mix.join(';') + `;${lab.join('')}amix=inputs=${lab.length}:normalize=0:duration=longest[a]`;
       amap = ['-map', '[a]', '-c:a', 'aac', '-b:a', '256k'];
-    } else { inputs.push('-itsoffset', String(I), '-i', job.video); amap = ['-map', '2:a?', '-c:a', 'copy']; }   // no PCM: danser audio only, kept in sync
-  }
-  const glass = glassChain(job, inputs, vw, vh, s, I || O ? '[g0]' : '[0:v]');
-  fc = pre + glass.chain + fc.replace('<GAME>', glass.out);
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...inputs, '-filter_complex', fc,
-    '-map', '[v]', ...amap, ...encoderArgs(job), '-t', String(I + G + O), '-movflags', '+faststart', job.out];
-  const ff = spawn(job.ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'] });
-  let err = '', dead = false; ff.stderr.on('data', d => err = (err + d).slice(-4000));
-  ff.stdin.on('error', () => { dead = true; });
-  const closed = new Promise(r => ff.on('close', c => { dead = true; r(c); }));
-  const hud = new HUD(job.hud, assets), all = nI + total + nO;
-  const info = { meta, player: meta.player, mods: modList(meta.mods), bpm: tl.at(meta.start).bpm, countryRank: job.hud?.countryRank, globalRank: job.hud?.globalRank, settings: job.introSettings };
-  const summary = O ? { ...tl.summary(), player: meta.player } : null;
-  const widgets = job.tosu || [];
-  const external = widgets.filter(w => !dancingWidget(w.folder));
-  const bundled = widgets.filter(w => dancingWidget(w.folder));
-  let stage = external.length ? await openStage({ ...job, tosu: external }, vw, vh, s).catch(e => { log({ warn: 'Widgets tosu ignorés : ' + e.message }); return null; }) : null;
-  const tosuEvery = Math.max(1, Math.round(fps / (job.tosuFps || 30)));
-  let shot = null;
-  for (let i = 0; i < all && !dead; i++) {
-    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, vw, vh); g.setTransform(s, 0, 0, s, 0, 0);
-    if (i < nI) drawIntro(g, i / fps, I, info, assets, job.hud);
-    else if (i >= nI + total) drawOutro(g, (i - nI - total) / fps, O, summary, assets, job.hud);
-    else {
-      const j = i - nI, t = frames[Math.min(videoFrames - 1, Math.round(j * ratio)) * m + (m >> 1)];
-      const st = tl.at(t, sort); st.since = j * 1000 / fps; hud.draw(g, st, j * 1000 / fps);
-      if (bundled.length) drawDancingWidgets(g, bundled, tosuMessages(st, meta, { board: st.board }));
-      if (stage) {
-        if (j % tosuEvery === 0 || !shot) {
-          const errs = tl.errs.slice(Math.max(0, Timeline.idx(tl.errs, t) - 199), Timeline.idx(tl.errs, t) + 1).map(e => e.e);
-          try {
-            shot = await stage.frame(j * 1000 / fps, tosuMessages(st, meta, { board: st.board, hitErrors: errs, country: job.hud?.country }));
-          } catch (e) {
-            log({ warn: 'Capture des widgets interrompue : ' + e.message });
-            stage.close();
-            stage = null;
-            shot = null;
-          }
-        }
-        if (shot) { g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(shot.img, shot.x, shot.y); }
-      }
-    }
-    if (!ff.stdin.write(Buffer.from(g.getImageData(0, 0, vw, vh).data.buffer))) await Promise.race([new Promise(r => ff.stdin.once('drain', r)), closed]);
-    if (i % 30 === 0) log({ progress: i / all, frame: i, total: all, fps: i / ((Date.now() - t0) / 1000 + 1e-9) });
-  }
-  ff.stdin.end();
-  stage?.close();
-  const code = await closed;
-  glass.cleanup();
-  if (code !== 0) { log({ error: 'ffmpeg: ' + err.trim() }); process.exit(1); }
+    } else { inputs.push('-itsoffset', String(I), '-i', job.video); amap = ['-map', '1:a?', '-c:a', 'copy']; }   // no PCM: danser audio only, kept in sync
+    const tag = /hevc|265/.test(job.encoder || '') ? ['-tag:v', 'hvc1'] : [];
+    await runFfmpeg(job.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', ...inputs, ...(fc ? ['-filter_complex', fc] : []),
+      '-map', '0:v', '-c:v', 'copy', ...tag, ...amap, '-t', String(I + G + O), '-movflags', '+faststart', job.out]);
+  } catch (e) { log({ error: e.message }); clean(); process.exit(1); }
+  clean();
   // Moments forts pour l'éditeur de montage, en secondes dans la vidéo finale (à côté du fichier).
   try {
     const tv = ms => toVideoTime(ms, frames, { oversample: m, fps: job.fps, intro: I });
@@ -324,4 +380,7 @@ async function main() {
   log({ done: true, file: job.out, seconds: (Date.now() - t0) / 1000 });
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(e => { log({ error: e.stack || String(e) }); process.exit(1); });
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const run = process.argv[2] === '--segment' ? segmentMain(process.argv[3], Number(process.argv[4])) : main();
+  run.catch(e => { log({ error: e.stack || String(e) }); process.exit(1); });
+}

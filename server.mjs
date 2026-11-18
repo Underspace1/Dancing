@@ -94,12 +94,17 @@ function forcedPatch(profile) {
   };
 }
 // The danser pass is an intermediate: encode it close to lossless, the final pass applies the chosen quality.
-function masterQuality(rec) {
-  const e = rec.Encoder, o = {};
+// It is thrown away after the overlay pass, so it is encoded as fast as possible: H.264 (x265 is several times
+// slower to encode and to decode) with the fastest preset. Quality stays near lossless (CRF/CQ 12 at most).
+const MASTER_ENCODER = { libx265: 'libx264', hevc_nvenc: 'h264_nvenc' };
+function masterQuality(rec = {}) {
+  const e = MASTER_ENCODER[rec.Encoder] && rec[MASTER_ENCODER[rec.Encoder]] ? MASTER_ENCODER[rec.Encoder] : rec.Encoder, o = {};
+  if (e !== rec.Encoder) o.Encoder = e;
   if (rec[e]) {
     const p = { ...rec[e] };
-    for (const k of ['CRF', 'CQ', 'Quality']) if (k in p) p[k] = Math.min(p[k], 12);
+    for (const k of ['CRF', 'CQ', 'Quality']) if (typeof p[k] === 'number') p[k] = Math.min(p[k], 12);
     if ('RateControl' in p && /cbr|vbr|abr/.test(p.RateControl)) p.RateControl = e.includes('nvenc') ? 'cq' : e.includes('qsv') ? 'icq' : 'crf';
+    if (typeof p.Preset === 'string') p.Preset = /^libx26[45]$/.test(e) ? 'ultrafast' : /nvenc/.test(e) ? 'p1' : p.Preset;
     o[e] = p;
   }
   return o;
@@ -315,6 +320,7 @@ async function startManiaRender(file, info, mode) {
         if (o.progress != null) { job.progress = o.progress; const s = (Date.now() - t0) / 1000 / Math.max(o.progress, 1e-3) * (1 - o.progress); job.eta = `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`; }
         if (o.error) logLine('Erreur : ' + o.error);
         if (o.warn) logLine(o.warn);
+        if (o.info) logLine(o.info);
         if (o.done) logLine(`Vidéo osu!mania terminée en ${o.seconds?.toFixed?.(0)} s`);
       });
       Object.assign(job, { running: false, stage: 'done', progress: 1, eta: null, finished: Date.now() });
@@ -413,6 +419,7 @@ async function startRender({ replay, mode }) {
         if (o.progress != null) { job.progress = o.progress; const s = (Date.now() - t0) / 1000 / Math.max(o.progress, 1e-3) * (1 - o.progress); job.eta = `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`; }
         if (o.error) logLine('Erreur : ' + o.error);
         if (o.warn) logLine(o.warn);
+        if (o.info) logLine(o.info);
         if (o.done) logLine(`Overlay composé en ${o.seconds?.toFixed?.(0)} s`);
       });
       if (nativeToken) {
