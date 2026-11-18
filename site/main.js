@@ -64,7 +64,7 @@ function pile() {
     if (d < 0) { const e = clamp(d + 1), b = backOut(e); ty = (1 - b) * innerHeight * .95; rot = (1 - e) * 7 * (i % 2 ? 1 : -1); out = smooth(clamp((e - .55) / .45)); }
     else { const k = Math.min(d, 3); ty = -k * lift; sc = 1 - k * .045; rot = TILT[i % 5] * Math.min(1, d); dim = k * .2; out = 1 - smooth(clamp(d * 1.8)); }
     el.style.transform = `translate3d(0, ${ty.toFixed(1)}px, 0) rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
-    el.style.filter = dim ? `brightness(${(1 - Math.min(dim, .6)).toFixed(3)})` : '';
+    el.style.filter = `drop-shadow(0 26px 30px rgba(0, 0, 0, .55))${dim ? ` brightness(${(1 - Math.min(dim, .6)).toFixed(3)})` : ''}`;
     el.style.visibility = d < -1 || d > 3.5 ? 'hidden' : '';
     el.style.zIndex = i;
     el.style.setProperty('--out', out.toFixed(3));
