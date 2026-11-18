@@ -78,8 +78,31 @@ document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', 
   scrollTo({ top: files.offsetTop + ((i ? i - 0.3 : 0) / (n - 1)) * filesRun() + 1, behavior: 'smooth' });
 }));
 
+// Sous le capot : la carte s'ouvre en couches (capot, radiateur, encodeur, puce, mémoire, circuit), chaque pièce
+// qui travaille pour le rendu s'allume tour à tour, puis la carte se referme.
+const gpuSec = document.getElementById('capot'), gcard = document.getElementById('gcard');
+const gsteps = [...document.querySelectorAll('.gsteps li')];
+let lastPart = null;
+function gpu() {
+  if (!gpuSec) return;
+  const r = gpuSec.getBoundingClientRect(), run = r.height - innerHeight;
+  const p = calm ? 0.5 : clamp(-r.top / Math.max(1, run));
+  const open = calm ? 1 : smooth(clamp((p - 0.04) / 0.2)) * (1 - smooth(clamp((p - 0.88) / 0.1)));
+  const w = gcard.offsetWidth, narrow = innerWidth <= 900;
+  gcard.style.setProperty('--rx', `${(58 * open).toFixed(2)}deg`);
+  gcard.style.setProperty('--rz', `${(-32 * open).toFixed(2)}deg`);
+  gcard.style.setProperty('--gap', (w * (narrow ? 0.11 : 0.09) * open).toFixed(1));
+  gcard.style.setProperty('--sc', (1 - (narrow ? 0.12 : 0.2) * open).toFixed(3));
+  gcard.style.setProperty('--x', open.toFixed(3));
+  const k = calm ? -1 : p < 0.26 ? (open > 0.5 ? 0 : -1) : p < 0.44 ? 1 : p < 0.62 ? 2 : p < 0.88 ? 3 : -1;
+  const idx = k < 0 ? (p < 0.26 ? 0 : 3) : k;
+  const part = calm || open < 0.85 ? null : gsteps[k]?.dataset.part ?? null;
+  if (part !== lastPart) { lastPart = part; if (part) gcard.dataset.part = part; else delete gcard.dataset.part; }
+  gsteps.forEach((li, i) => li.classList.toggle('on', calm || i === idx));
+}
+
 let ticking = false;
-const frame = () => { ticking = false; anatomy(); if (!calm) pile(); };
+const frame = () => { ticking = false; anatomy(); gpu(); if (!calm) pile(); };
 const ask = () => { if (!ticking) { ticking = true; requestAnimationFrame(frame); } };
 addEventListener('scroll', ask, { passive: true });
 addEventListener('resize', ask);
