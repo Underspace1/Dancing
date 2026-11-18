@@ -153,7 +153,7 @@ export function mountGPU(host, { calm = false } = {}) {
     const sh = new THREE.Shape(), w = LEN / 2, d = DEP / 2, r = .8;
     sh.moveTo(-w + r, -d); sh.lineTo(w - r, -d); sh.quadraticCurveTo(w, -d, w, -d + r); sh.lineTo(w, d - r); sh.quadraticCurveTo(w, d, w - r, d);
     sh.lineTo(-w + r, d); sh.quadraticCurveTo(-w, d, -w, d - r); sh.lineTo(-w, -d + r); sh.quadraticCurveTo(-w, -d, -w + r, -d);
-    const hole = new THREE.Path(); hole.moveTo(9, -4.3); hole.lineTo(9, 4.3); hole.lineTo(14, 4.3); hole.lineTo(14, -4.3); hole.closePath(); sh.holes.push(hole);
+    const hole = new THREE.Path(); hole.moveTo(8.8, -4.2); hole.lineTo(8.8, 4.2); hole.lineTo(14, 4.2); hole.lineTo(14, -4.2); hole.closePath(); sh.holes.push(hole);
     const g = new THREE.ExtrudeGeometry(sh, { depth: .12, bevelEnabled: true, bevelThickness: .03, bevelSize: .03, bevelSegments: 2 });
     g.rotateX(-Math.PI / 2);
     // UV de la texture brossée : x et z de la plaque
@@ -206,72 +206,72 @@ export function mountGPU(host, { calm = false } = {}) {
     heat.add(new THREE.Mesh(new THREE.TubeGeometry(path, 64, .17, 14), M.copper));
   });
 
-  // ----- capot et ventilateurs : châssis mat, plaque « armure » métal, bagues chanfreinées, flancs ajourés -----
+  // ----- capot : cadre monobloc en aluminium poli, panneau noir brillant, plaque striée et grand ventilateur -----
   const top = new THREE.Group(); card.add(top);
-  const FANS = [-9.7, 0, 9.7], R = 4.25;
-  const ribs = patternTex(256, 256, (g, w, h) => { g.fillStyle = '#808080'; g.fillRect(0, 0, w, h); g.strokeStyle = '#d0d0d0'; g.lineWidth = 3; for (let x = -h; x < w; x += 12) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.stroke(); } }, [.6, .6]);
-  const brushed = patternTex(512, 64, (g, w, h) => { g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .25})`; g.fillRect(0, y, w, 1); } }, [.15, .9]);
-  const slots = canvasTex(1024, 128, (g, w, h) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.fillStyle = '#000'; for (let x = 40; x < w - 40; x += 22) { g.beginPath(); g.moveTo(x, 18); g.lineTo(x + 10, 18); g.lineTo(x + 26, h - 18); g.lineTo(x + 16, h - 18); g.closePath(); g.fill(); } }, false);
+  const FX = 10.1, R = 4.15, FANS = [FX], SEAM = 5.4;
+  const rings = patternTex(512, 512, (g, w, h) => { g.fillStyle = '#7f7f7f'; g.fillRect(0, 0, w, h); for (let r = 6; r < 362; r += 5) { g.strokeStyle = r % 10 ? '#5a5a5a' : '#b4b4b4'; g.lineWidth = 2; g.beginPath(); g.arc(w / 2, h / 2, r, 0, 7); g.stroke(); } });
+  const brushed = patternTex(512, 64, (g, w, h) => { g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .25})`; g.fillRect(0, y, w, 1); } }, [.2, 1]);
+  const windowAlpha = (w0, w1) => canvasTex(1024, 128, (g, w, h) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.fillStyle = '#000'; g.beginPath(); g.roundRect(w0 * w, 22, (w1 - w0) * w, h - 44, 18); g.fill(); }, false);
   const Mt = {
-    chassis: new THREE.MeshPhysicalMaterial({ color: 0x0c0d10, roughness: .62, metalness: .25, bumpMap: ribs, bumpScale: .6, clearcoat: .15 }),
-    armor: new THREE.MeshPhysicalMaterial({ color: 0x3b3f47, roughness: .3, metalness: 1, bumpMap: brushed, bumpScale: .25, clearcoat: .5, clearcoatRoughness: .2 }),
-    bezel: new THREE.MeshPhysicalMaterial({ color: 0xc8cdd6, roughness: .22, metalness: 1, clearcoat: .6 }),
-    insert: new THREE.MeshPhysicalMaterial({ color: 0x8e949e, roughness: .26, metalness: 1, bumpMap: brushed, bumpScale: .2 }),
-    wall: new THREE.MeshPhysicalMaterial({ color: 0x1f2126, roughness: .45, metalness: .85, alphaMap: slots, alphaTest: .5, side: THREE.DoubleSide }),
-    stator: new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: .7, metalness: .2 }),
-    blade: new THREE.MeshPhysicalMaterial({ color: 0x101114, roughness: .5, metalness: .05, clearcoat: .35, clearcoatRoughness: .4, side: THREE.DoubleSide }),
-    hub: new THREE.MeshPhysicalMaterial({ color: 0xbfc4cc, metalness: 1, roughness: .3, map: canvasTex(256, 256, (g, w, h) => {
-      g.fillStyle = '#9aa0a8'; g.fillRect(0, 0, w, h);
-      for (let r = 4; r < 128; r += 1.5) { g.strokeStyle = `rgba(255,255,255,${Math.random() * .22})`; g.beginPath(); g.arc(128, 128, r, 0, 7); g.stroke(); }
-      g.fillStyle = '#16171b'; g.font = '800 44px "Inter Tight", sans-serif'; g.textAlign = 'center'; g.fillText('D!', 128, 144);
+    frame: new THREE.MeshPhysicalMaterial({ color: 0xa9afb8, metalness: 1, roughness: .2, clearcoat: .8, clearcoatRoughness: .12, bumpMap: brushed, bumpScale: .12 }),
+    panel: new THREE.MeshPhysicalMaterial({ color: 0x08090a, metalness: .55, roughness: .16, clearcoat: 1, clearcoatRoughness: .06 }),
+    plate: new THREE.MeshPhysicalMaterial({ color: 0x18191c, metalness: .9, roughness: .34, bumpMap: rings, bumpScale: 1.2 }),
+    wallZ: new THREE.MeshPhysicalMaterial({ color: 0x2b2e34, metalness: 1, roughness: .26, clearcoat: .7, clearcoatRoughness: .15, alphaMap: windowAlpha(.3, .62), alphaTest: .5, side: THREE.DoubleSide }),
+    wall: new THREE.MeshPhysicalMaterial({ color: 0x2b2e34, metalness: 1, roughness: .26, clearcoat: .7, clearcoatRoughness: .15, side: THREE.DoubleSide }),
+    stator: new THREE.MeshStandardMaterial({ color: 0x111215, roughness: .6, metalness: .3 }),
+    blade: new THREE.MeshPhysicalMaterial({ color: 0x0c0d10, roughness: .38, metalness: .1, clearcoat: .6, clearcoatRoughness: .25, side: THREE.DoubleSide }),
+    hub: new THREE.MeshPhysicalMaterial({ color: 0xd2d6dc, metalness: 1, roughness: .18, clearcoat: 1, map: canvasTex(512, 512, (g, w, h) => {
+      g.fillStyle = '#a7adb5'; g.fillRect(0, 0, w, h);
+      for (let r = 2; r < 256; r += 1.2) { g.strokeStyle = `rgba(255,255,255,${Math.random() * .3})`; g.beginPath(); g.arc(256, 256, r, 0, 7); g.stroke(); }
+      const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(.5, 'rgba(0,0,0,.15)'); gr.addColorStop(1, 'rgba(255,255,255,.25)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
     }) }),
   };
-  const shroud = new THREE.Mesh(shroudGeometry(FANS.map(x => [x, R])), Mt.chassis); shroud.position.y = 2.35; top.add(shroud);
-  // plaque armure : contour chanfreiné, encoches en V entre les ventilateurs, ouvertures un peu plus larges que les ventilateurs
+  const rrect = (x0, x1, z0, z1, r) => { const s = new THREE.Shape(); s.moveTo(x0 + r, z0); s.lineTo(x1 - r, z0); s.quadraticCurveTo(x1, z0, x1, z0 + r); s.lineTo(x1, z1 - r); s.quadraticCurveTo(x1, z1, x1 - r, z1); s.lineTo(x0 + r, z1); s.quadraticCurveTo(x0, z1, x0, z1 - r); s.lineTo(x0, z0 + r); s.quadraticCurveTo(x0, z0, x0 + r, z0); return s; };
+  const flat = (shape, depth, bevel = .06) => { const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 4, curveSegments: 96 }); g.rotateX(-Math.PI / 2); return g; };
+  const W2 = LEN / 2, D2 = DEP / 2, IN = .55;
+  // cadre : anneau poli sur le dessus, flancs pleins avec une fenêtre sur les ailettes côté PCIe
+  { const sh = rrect(-W2, W2, -D2, D2, 1.3); sh.holes.push(rrect(-W2 + IN, W2 - IN, -D2 + IN, D2 - IN, .9)); const m = new THREE.Mesh(flat(sh, .32, .14), Mt.frame); m.position.y = 2.55; top.add(m); }
+  { const w = new THREE.Mesh(new THREE.PlaneGeometry(LEN - 1.6, 2.2), Mt.wallZ); w.position.set(0, 1.55, D2); top.add(w); }
+  { const w = new THREE.Mesh(new THREE.PlaneGeometry(LEN - 1.6, 2.2), Mt.wall); w.position.set(0, 1.55, -D2); w.rotation.y = Math.PI; top.add(w); }
+  for (const x of [-1, 1]) { const w = new THREE.Mesh(new THREE.PlaneGeometry(DEP - 1.6, 2.2), Mt.wall); w.position.set(x * W2, 1.55, 0); w.rotation.y = x * Math.PI / 2; top.add(w); }
+  // coins arrondis des flancs
+  for (const [x, z] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, 2.2, 24, 1, true, 0, Math.PI / 2), Mt.wall); c.position.set(x * (W2 - .8), 1.55, z * (D2 - .8)); c.rotation.y = x > 0 ? (z > 0 ? 0 : Math.PI / 2) : (z > 0 ? -Math.PI / 2 : Math.PI); top.add(c); }
+  // panneau noir brillant et plaque striée du ventilateur, séparés par un filet poli et une ligne lumineuse
+  { const m = new THREE.Mesh(flat(rrect(-W2 + IN, SEAM - .12, -D2 + IN, D2 - IN, .7), .22, .05), Mt.panel); m.position.y = 2.6; top.add(m); }
+  { const sh = rrect(SEAM + .12, W2 - IN, -D2 + IN, D2 - IN, .7), h = new THREE.Path(); h.absarc(FX, 0, R, 0, Math.PI * 2, true); sh.holes.push(h);
+    const g = flat(sh, .22, .05), uv = g.attributes.uv, ps = g.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (ps.getX(i) - FX) / 13 + .5, (ps.getZ(i)) / 13 + .5);   // anneaux centrés sur le ventilateur
+    const m = new THREE.Mesh(g, Mt.plate); m.position.y = 2.6; top.add(m); }
+  { const s = new THREE.Mesh(new RoundedBoxGeometry(.2, .1, DEP - 2 * IN, 2, .04), Mt.frame); s.position.set(SEAM, 2.86, 0); top.add(s); }
+  { const l = new THREE.Mesh(new THREE.BoxGeometry(.04, .02, DEP - 2 * IN - .4), M.led); l.position.set(SEAM - .2, 2.9, 0); top.add(l); }
+  // inscriptions gravées : discrète sur le panneau, en creux sur le flanc côté ventilateur
+  const engraving = (text, size, color) => new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, map: canvasTex(1024, 192, (g, cw, ch) => {
+    g.clearRect(0, 0, cw, ch); g.font = `800 ${size}px "Inter Tight", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillText(text, cw / 2 + 2, ch / 2 + 3);      // ombre de la gravure
+    g.fillStyle = color; g.fillText(text, cw / 2, ch / 2);
+  }) });
+  { const m = new THREE.Mesh(new THREE.PlaneGeometry(4.6, .86), engraving('DANCING!', 120, '#555a62')); m.position.set(FX, 1.35, D2 + .012); top.add(m); }
+  // grand ventilateur : bague polie, stator, 9 larges pales, gros moyeu poli
+  const bezelGeo = new THREE.LatheGeometry([[R - .02, -.6], [R - .02, .02], [R + .1, .2], [R + .22, .24]].map(([x, y]) => new THREE.Vector2(x, y)), 160);
+  { const b = new THREE.Mesh(bezelGeo, Mt.frame); b.position.set(FX, 2.62, 0); top.add(b); }
+  const blade = (() => {
+    const r0 = 1.55, r1 = 3.98, s = new THREE.Shape();
+    s.moveTo(r0, -.6); s.bezierCurveTo(2.3, -1.6, 3.4, -1.5, r1, -.75); s.quadraticCurveTo(r1 + .12, .05, r1 - .1, .75); s.bezierCurveTo(3.2, .1, 2.3, .4, r0, .62); s.closePath();
+    const g = new THREE.ExtrudeGeometry(s, { depth: .05, bevelEnabled: true, bevelThickness: .02, bevelSize: .025, bevelSegments: 2, curveSegments: 28 });
+    g.rotateX(-Math.PI / 2); g.rotateX(.42); return g;
+  })();
+  const strut = new THREE.BoxGeometry(2.6, .07, .16); strut.translate(2.75, 0, 0);
+  const fans = [];
   {
-    const sh = chamferShape(LEN / 2 - .55, DEP / 2 - .5, 1.7, [-4.85, 4.85]);
-    for (const x of FANS) { const h = new THREE.Path(); h.absarc(x, 0, R + .5, 0, Math.PI * 2, true); sh.holes.push(h); }
-    const g = new THREE.ExtrudeGeometry(sh, { depth: .14, bevelEnabled: true, bevelThickness: .06, bevelSize: .08, bevelSegments: 3, curveSegments: 72 });
-    g.rotateX(-Math.PI / 2);
-    const armor = new THREE.Mesh(g, Mt.armor); armor.position.y = 3.0; top.add(armor);
-  }
-  // bagues chanfreinées autour de chaque ventilateur (profil tourné)
-  const bezelGeo = new THREE.LatheGeometry([[R - .02, -.55], [R - .02, .05], [R + .08, .22], [R + .36, .3], [R + .5, .3]].map(([x, y]) => new THREE.Vector2(x, y)), 128);
-  FANS.forEach(x => { const b = new THREE.Mesh(bezelGeo, Mt.bezel); b.position.set(x, 2.9, 0); top.add(b); });
-  // inserts métalliques anguleux entre les ventilateurs, avec un filet lumineux
-  [-4.85, 4.85].forEach(x => {
-    const sh = new THREE.Shape(); sh.moveTo(-.55, -3.6); sh.lineTo(.15, -3.6); sh.lineTo(.55, 3.6); sh.lineTo(-.15, 3.6); sh.closePath();
-    const g = new THREE.ExtrudeGeometry(sh, { depth: .1, bevelEnabled: true, bevelThickness: .04, bevelSize: .04, bevelSegments: 2 }); g.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(g, Mt.insert); m.position.set(x, 3.22, 0); m.scale.x = Math.sign(x); top.add(m);
-    const line = new THREE.Mesh(new THREE.BoxGeometry(.05, .03, 5.6), M.led); line.position.set(x, 3.38, 0); line.rotation.y = -.1 * Math.sign(x); top.add(line);
-  });
-  // flancs ajourés : on voit les ailettes à travers les fentes inclinées
-  for (const z of [-1, 1]) { const w = new THREE.Mesh(new THREE.PlaneGeometry(LEN - 1.6, 1.75), Mt.wall); w.position.set(0, 1.47, z * (DEP / 2 - .02)); if (z < 0) w.rotation.y = Math.PI; top.add(w); }
-  { const w = new THREE.Mesh(new THREE.PlaneGeometry(DEP - .8, 1.75), Mt.wall); w.position.set(LEN / 2 - .02, 1.47, 0); w.rotation.y = Math.PI / 2; top.add(w); }
-  // vis et barre lumineuse sur la tranche haute (côté opposé au PCIe), filet lumineux sur le bord de l'armure
-  for (const [x, z] of [[-13.6, -4.9], [-13.6, 4.9], [13.6, -4.9], [13.6, 4.9]]) { const sc = new THREE.Mesh(new THREE.CylinderGeometry(.16, .16, .06, 6), Mt.bezel); sc.position.set(x, 3.22, z); top.add(sc); }
-  const bar = new THREE.Mesh(new THREE.PlaneGeometry(14, .42), new THREE.MeshBasicMaterial({ map: canvasTex(1024, 32, (g, w, h) => {
-    const lg = g.createLinearGradient(0, 0, w, 0); lg.addColorStop(0, '#2a3a80'); lg.addColorStop(.5, '#9fc0ff'); lg.addColorStop(1, '#2a3a80'); g.fillStyle = lg; g.fillRect(0, 0, w, h);
-    g.fillStyle = '#05060a'; g.font = '800 24px "Inter Tight", sans-serif'; g.textAlign = 'center'; g.fillText('DANCING!', w / 2, 24);
-  }), transparent: true }));
-  bar.position.set(-2, 2.75, -DEP / 2 - .03); bar.rotation.y = Math.PI; top.add(bar);
-  const led = new THREE.Mesh(new RoundedBoxGeometry(LEN - 5, .04, .07, 2, .02), M.led); led.position.set(0, 3.2, DEP / 2 - .62); top.add(led);
-  const plaque = new THREE.Mesh(new THREE.PlaneGeometry(3.6, .9), new THREE.MeshBasicMaterial({ map: labelTexture('DANCING!', 'RT-01 · RENDER'), transparent: true, depthWrite: false }));
-  plaque.rotation.x = -Math.PI / 2; plaque.position.set(LEN / 2 - 3.2, 3.23, -DEP / 2 + 1.25); top.add(plaque);
-  // ventilateurs : stator fixe (7 bras), rotor de 13 pales avec anneau, moyeu brossé
-  const blade = bladeGeometry(1.15, 3.92), fans = [];
-  const strut = new THREE.BoxGeometry(2.9, .07, .14); strut.translate(2.55, 0, 0);
-  FANS.forEach((x, k) => {
-    const fan = new THREE.Group(); fan.position.set(x, 2.55, 0); top.add(fan);
-    for (let i = 0; i < 7; i++) { const m = new THREE.Mesh(strut, Mt.stator); m.position.y = -.32; m.rotation.y = i * Math.PI * 2 / 7 + .2; fan.add(m); }
-    const motor = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.25, .3, 48), Mt.stator); motor.position.y = -.3; fan.add(motor);
+    const fan = new THREE.Group(); fan.position.set(FX, 2.42, 0); top.add(fan);
+    for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(strut, Mt.stator); m.position.y = -.34; m.rotation.y = i * Math.PI * 2 / 5 + .3; fan.add(m); }
     const rotor = new THREE.Group(); fan.add(rotor);
-    for (let b = 0; b < 13; b++) { const m = new THREE.Mesh(blade, Mt.blade); m.rotation.y = b * Math.PI * 2 / 13; rotor.add(m); }
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(3.98, 3.98, .34, 128, 1, true), M.fanRing); ring.material.side = THREE.DoubleSide; rotor.add(ring);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.18, .42, 64), Mt.stator); hub.position.y = .02; rotor.add(hub);
-    const cap = new THREE.Mesh(new THREE.CircleGeometry(.98, 64), Mt.hub); cap.rotation.x = -Math.PI / 2; cap.position.y = .24; rotor.add(cap);
-    fans.push({ rotor, dir: k === 1 ? -1 : 1 });       // le ventilateur central tourne dans l'autre sens
-  });
+    for (let b = 0; b < 9; b++) { const m = new THREE.Mesh(blade, Mt.blade); m.rotation.y = b * Math.PI * 2 / 9; rotor.add(m); }
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 4.0, .3, 160, 1, true), M.fanRing); ring.material.side = THREE.DoubleSide; rotor.add(ring);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(1.58, 1.62, .46, 96), Mt.stator); rotor.add(hub);
+    const cap = new THREE.Mesh(new THREE.CircleGeometry(1.5, 96), Mt.hub); cap.rotation.x = -Math.PI / 2; cap.position.y = .235; rotor.add(cap);
+    fans.push({ rotor, dir: 1 });
+  }
   // toutes les matières du capot peuvent s'effacer pendant les plans sur les puces
   const topMats = new Set(); top.traverse(o => { if (o.material) topMats.add(o.material); });
   topMats.forEach(m => { m.transparent = true; });
@@ -282,7 +282,7 @@ export function mountGPU(host, { calm = false } = {}) {
 
   // ----- flux d'air : particules aspirées par les ventilateurs, poussées à travers les ailettes -----
   const NP = calm ? 0 : 1100, pos = new Float32Array(NP * 3), col = new Float32Array(NP * 3), life = new Float32Array(NP), seed = new Float32Array(NP * 4);
-  for (let i = 0; i < NP; i++) { life[i] = Math.random(); seed.set([Math.floor(Math.random() * 3), Math.random() * Math.PI * 2, .9 + Math.random() * 2.8, Math.random() < .5 ? -1 : 1], i * 4); }
+  for (let i = 0; i < NP; i++) { life[i] = Math.random(); seed.set([0, Math.random() * Math.PI * 2, .9 + Math.random() * 2.8, Math.random() < .5 ? -1 : 1], i * 4); }
   const airGeo = new THREE.BufferGeometry();
   airGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); airGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   const air = new THREE.Points(airGeo, new THREE.PointsMaterial({ size: .16, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
@@ -318,7 +318,7 @@ export function mountGPU(host, { calm = false } = {}) {
     die: () => die.getWorldPosition(new THREE.Vector3()),
     vram: () => pcbG.localToWorld(new THREE.Vector3(VRAM[1][0] + .6, .3, VRAM[1][1])),
     enc: () => enc.getWorldPosition(new THREE.Vector3()),
-    fans: () => fans[2].rotor.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, .4, 0)),
+    fans: () => fans[0].rotor.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, .4, 0)),
     pcie: () => pcbG.localToWorld(new THREE.Vector3(-1, .1, DEP / 2 + .5)),
   };
 
@@ -364,13 +364,13 @@ export function mountGPU(host, { calm = false } = {}) {
     spin += dt * rpm; for (const f of fans) f.rotor.rotation.y = spin * f.dir;
     // flux d'air
     if (NP) {
-      const strength = .35 + .65 * Math.max(hot.fans, 1 - ex) - .3 * lift, fy = top.position.y + 2.55, hy = heat.position.y + 1.4;
+      const strength = .35 + .65 * Math.max(hot.fans, 1 - ex) - .3 * lift, fy = top.position.y + 2.42, hy = heat.position.y + 1.4;
       for (let i = 0; i < NP; i++) {
         let l = life[i] + dt * (.28 + .2 * hot.fans) * (1 + (i % 7) * .05); if (l >= 1) l -= 1; life[i] = l;
         const f = seed[i * 4], a0 = seed[i * 4 + 1], r0 = seed[i * 4 + 2], side = seed[i * 4 + 3], cx = FANS[f];
         let x, y, z, b;
         if (l < .4) { const k = l / .4, ang = a0 + spin * .6 * fans[f].dir + k * 2; x = cx + Math.cos(ang) * r0; z = Math.sin(ang) * r0 * .9; y = fy + 4.5 * (1 - k) - .4; b = smooth(k) * .9; }
-        else if (f === 2 && side > 0) { const k = (l - .4) / .6; x = cx + Math.cos(a0) * r0 * .55; z = Math.sin(a0) * r0 * .5; y = hy - k * (hy - back.position.y + 4); b = (1 - k) * .9; }   // traversant : l'air ressort par la plaque arrière
+        else if (side > 0) { const k = (l - .4) / .6; x = cx + Math.cos(a0) * r0 * .55; z = Math.sin(a0) * r0 * .5; y = hy - k * (hy - back.position.y + 4); b = (1 - k) * .9; }   // traversant : l'air ressort par la plaque arrière
         else { const k = (l - .4) / .6, ang = a0; x = cx + Math.cos(ang) * r0 * (1 + k * .5); y = hy + Math.sin(a0 * 3) * .5; z = side * (Math.abs(Math.sin(ang)) * r0 * .5 + k * (DEP / 2 + 5)); b = (1 - k) * .9; }
         pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
         const c = b * Math.max(0, strength); col[i * 3] = AIR.r * c; col[i * 3 + 1] = AIR.g * c; col[i * 3 + 2] = AIR.b * c;

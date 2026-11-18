@@ -81,7 +81,7 @@
           <div class="callout" data-for="die"><i></i><span><b>Puce graphique</b>Cœurs de calcul · danser</span></div>
           <div class="callout" data-for="vram"><i></i><span><b>Mémoire vidéo</b>GDDR · textures et flou</span></div>
           <div class="callout" data-for="enc"><i></i><span><b>Encodeur vidéo</b>NVENC · AMF · QSV</span></div>
-          <div class="callout" data-for="fans"><i></i><span><b>3 ventilateurs</b>Flux traversant</span></div>
+          <div class="callout" data-for="fans"><i></i><span><b>Ventilateur</b>Flux traversant</span></div>
           <div class="callout" data-for="pcie"><i></i><span><b>PCIe ×16</b>Vers le processeur</span></div>
         </div>
         <div class="gpu-head">
@@ -92,11 +92,11 @@
           <div class="gpu-bars" aria-hidden="true"><i data-c="0"></i><i data-c="1"></i><i data-c="2"></i><i data-c="3"></i><i data-c="4"></i><i data-c="5"></i><i data-c="6"></i></div>
           <ol class="gchap">
             <li data-c="0"><span class="mono">01 · La carte</span><h3>Le rendu commence ici.</h3><p>danser rejoue ton replay sur ta carte graphique. Fais défiler pour l’ouvrir.</p></li>
-            <li data-c="1"><span class="mono">02 · Vue éclatée</span><h3>Quatre couches, chacune son rôle.</h3><p>Capot et ventilateurs, radiateur, circuit, plaque arrière. Voici ce qui travaille pendant un rendu Dancing!.</p></li>
+            <li data-c="1"><span class="mono">02 · Vue éclatée</span><h3>Quatre couches, chacune son rôle.</h3><p>Capot et ventilateur, radiateur, circuit, plaque arrière. Voici ce qui travaille pendant un rendu Dancing!.</p></li>
             <li data-c="2"><span class="mono">03 · Puce graphique</span><h3>Le jeu, dessiné par les cœurs.</h3><p>Cercles, sliders, curseur, skin, fond de la map : danser calcule chaque image sur les cœurs de la puce. Avec le flou de mouvement, il en calcule 4 à 14 par image et les fusionne.</p></li>
             <li data-c="3"><span class="mono">04 · Mémoire vidéo</span><h3>Tout reste sur la carte.</h3><p>Textures du skin et de la map, images intermédiaires du flou : elles vivent dans la mémoire de la carte, sans aller-retour vers le reste du PC.</p></li>
             <li data-c="4"><span class="mono">05 · Encodeur vidéo</span><h3>Un bloc dédié, dans la puce.</h3><p>NVENC chez NVIDIA, AMF chez AMD, QSV chez Intel : il compresse la vidéo sans occuper les cœurs. Sans lui, x264 encode sur le processeur.</p></li>
-            <li data-c="5"><span class="mono">06 · Refroidissement</span><h3>De l’air, en continu.</h3><p>Trois ventilateurs aspirent l’air et le poussent entre les ailettes du radiateur et autour des caloducs en cuivre. La puce reste stable pendant les longs rendus.</p></li>
+            <li data-c="5"><span class="mono">06 · Refroidissement</span><h3>De l’air, en continu.</h3><p>Le grand ventilateur aspire l’air, le pousse entre les ailettes et autour des caloducs en cuivre, puis à travers la carte. La puce reste stable pendant les longs rendus.</p></li>
             <li data-c="6"><span class="mono">07 · PCIe → processeur</span><h3>L’overlay, côté processeur.</h3><p>Les images partent par le connecteur PCIe. Le processeur dessine l’overlay et les widgets, puis ffmpeg fusionne tout, en tranches rendues en parallèle sur tous ses cœurs.</p></li>
           </ol>
         </div>
