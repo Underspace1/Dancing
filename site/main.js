@@ -78,27 +78,40 @@ document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', 
   scrollTo({ top: files.offsetTop + ((i ? i - 0.3 : 0) / (n - 1)) * filesRun() + 1, behavior: 'smooth' });
 }));
 
-// Sous le capot : la carte s'ouvre en couches (capot, radiateur, encodeur, puce, mémoire, circuit), chaque pièce
-// qui travaille pour le rendu s'allume tour à tour, puis la carte se referme.
-const gpuSec = document.getElementById('capot'), gcard = document.getElementById('gcard');
-const gsteps = [...document.querySelectorAll('.gsteps li')];
-let lastPart = null;
+// Sous le capot : la carte 3D (gpu3d.js, Three.js) est chargée quand la section approche, puis pilotée par le défilement.
+const gpuSec = document.getElementById('capot'), gpuStage = document.getElementById('gpuStage');
+const gchap = [...document.querySelectorAll('.gchap li')], gbars = [...document.querySelectorAll('.gpu-bars i')];
+const callouts = Object.fromEntries([...document.querySelectorAll('.callout')].map(c => [c.dataset.for, c]));
+const CHAP = [0, .08, .27, .41, .55, .69, .83, 1.01];     // début de chaque chapitre (progression de la section)
+let gpu3d = null, lastChap = -1;
+const gpuProgress = () => { const r = gpuSec.getBoundingClientRect(); return clamp(-r.top / Math.max(1, r.height - innerHeight)); };
 function gpu() {
   if (!gpuSec) return;
-  const r = gpuSec.getBoundingClientRect(), run = r.height - innerHeight;
-  const p = calm ? 0.5 : clamp(-r.top / Math.max(1, run));
-  const open = calm ? 1 : smooth(clamp((p - 0.04) / 0.2)) * (1 - smooth(clamp((p - 0.88) / 0.1)));
-  const w = gcard.offsetWidth, narrow = innerWidth <= 900;
-  gcard.style.setProperty('--rx', `${(58 * open).toFixed(2)}deg`);
-  gcard.style.setProperty('--rz', `${(-32 * open).toFixed(2)}deg`);
-  gcard.style.setProperty('--gap', (w * (narrow ? 0.11 : 0.09) * open).toFixed(1));
-  gcard.style.setProperty('--sc', (1 - (narrow ? 0.12 : 0.2) * open).toFixed(3));
-  gcard.style.setProperty('--x', open.toFixed(3));
-  const k = calm ? -1 : p < 0.26 ? (open > 0.5 ? 0 : -1) : p < 0.44 ? 1 : p < 0.62 ? 2 : p < 0.88 ? 3 : -1;
-  const idx = k < 0 ? (p < 0.26 ? 0 : 3) : k;
-  const part = calm || open < 0.85 ? null : gsteps[k]?.dataset.part ?? null;
-  if (part !== lastPart) { lastPart = part; if (part) gcard.dataset.part = part; else delete gcard.dataset.part; }
-  gsteps.forEach((li, i) => li.classList.toggle('on', calm || i === idx));
+  const p = gpuProgress();
+  let c = 0; while (c < gchap.length - 1 && p >= CHAP[c + 1]) c++;
+  if (c !== lastChap) { lastChap = c; gchap.forEach((li, i) => li.classList.toggle('on', i === c)); gpuSec.classList.toggle('deep', c >= 2); }
+  gbars.forEach((b, i) => b.style.setProperty('--f', clamp((p - CHAP[i]) / (CHAP[i + 1] - CHAP[i])).toFixed(3)));
+  if (gpu3d) { gpu3d.progress = p; const r = gpuSec.getBoundingClientRect(); gpu3d.setVisible(r.bottom > 0 && r.top < innerHeight); }
+}
+if (gpuSec) {
+  const start = () => import('./gpu3d.js').then(({ mountGPU }) => {
+    gpu3d = mountGPU(gpuStage, { calm });
+    if (!gpu3d) throw Error('WebGL indisponible');
+    gpu3d.progress = gpuProgress();
+    gpu3d.onFrame = pts => {
+      for (const [k, el] of Object.entries(callouts)) {
+        const q = pts[k]; if (!q) continue;
+        el.classList.toggle('on', q.on && q.front);
+        el.classList.toggle('left', q.x > gpuStage.clientWidth * .55);
+        el.style.transform = `translate3d(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px, 0)`;
+      }
+    };
+    gpu();
+  }).catch(() => { gpuSec.classList.add('nogl'); gpuStage.remove(); });
+  // mouvement réduit : pas de 3D, les chapitres s'affichent en liste
+  if (calm) { gpuSec.classList.add('nogl'); gpuStage.remove(); }
+  else if (!('IntersectionObserver' in window)) start();
+  else { const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { io.disconnect(); start(); } }, { rootMargin: '150% 0px' }); io.observe(gpuSec); }
 }
 
 let ticking = false;
