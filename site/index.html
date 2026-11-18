@@ -84,6 +84,16 @@
           <div class="callout" data-for="fans"><i></i><span><b>Ventilateur</b>Flux traversant</span></div>
           <div class="callout" data-for="pcie"><i></i><span><b>PCIe ×16</b>Vers le processeur</span></div>
         </div>
+        <aside class="telemetry" aria-hidden="true">
+          <header class="tm-head mono"><span class="tm-live"></span>Moniteur de rendu<span class="tm-sim">simulation</span></header>
+          <div class="tm-frame mono"><span>Image <b id="tmFrame">0</b></span><span><b id="tmFps">0</b> i/s</span></div>
+          <div class="tm-row" data-k="die"><span class="tm-name">Cœurs GPU</span><b class="tm-val" id="tmGpu">0 %</b><canvas class="tm-spark" id="tmGpuSpark" width="240" height="44"></canvas></div>
+          <div class="tm-row" data-k="vram"><span class="tm-name">Mémoire vidéo</span><b class="tm-val" id="tmVram">0 Go</b><span class="tm-bar"><i id="tmVramBar"></i></span><span class="tm-sub mono" id="tmVramSub">sur 16 Go</span></div>
+          <div class="tm-row" data-k="enc"><span class="tm-name">Encodeur</span><b class="tm-val" id="tmEnc">0 %</b><span class="tm-bar"><i id="tmEncBar"></i></span><span class="tm-sub mono" id="tmEncSub">H.264 · NVENC</span></div>
+          <div class="tm-row" data-k="fans"><span class="tm-name">Ventilateur</span><b class="tm-val" id="tmFan">0 tr/min</b><canvas class="tm-spark" id="tmFanSpark" width="240" height="44"></canvas><span class="tm-sub mono" id="tmTemp">puce 40 °C</span></div>
+          <div class="tm-row" data-k="pcie"><span class="tm-name">PCIe → processeur</span><b class="tm-val" id="tmPcie">0 Go/s</b><span class="tm-bar"><i id="tmPcieBar"></i></span><span class="tm-sub mono" id="tmPcieSub">overlay en tranches</span></div>
+          <p class="tm-log mono" id="tmLog">danser › chargement de la map</p>
+        </aside>
         <div class="gpu-head">
           <p class="mono label">Sous le capot</p>
           <h2 class="title">Ce que fait ta carte graphique pendant un rendu.</h2>

@@ -79,6 +79,50 @@ document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', 
   scrollTo({ top: files.offsetTop + ((i ? i - 0.3 : 0) / (n - 1)) * filesRun() + 1, behavior: 'smooth' });
 }));
 
+// Moniteur de rendu (simulation) : valeurs illustratives qui suivent le chapitre affiché ; la ligne de la pièce montrée s'allume.
+const tm = (() => {
+  const el = id => document.getElementById(id), rows = Object.fromEntries([...document.querySelectorAll('.tm-row')].map(r => [r.dataset.k, r]));
+  if (!el('tmFrame')) return null;
+  const fr = n => Math.round(n).toLocaleString('fr-FR'), f1 = n => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  //            chapitres :  carte, éclatée, puce, mémoire, encodeur, refroid., PCIe
+  const T = { gpu: [34, 58, 97, 93, 88, 90, 86], vram: [2.1, 3.4, 5.2, 7.6, 7.4, 7.4, 7.3], enc: [0, 8, 22, 26, 64, 61, 58],
+    fan: [920, 1150, 1480, 1560, 1680, 2120, 1880], temp: [41, 47, 63, 65, 66, 62, 64], pcie: [.3, 1.1, 3.4, 3.9, 5.2, 6, 11.9], fps: [0, 0, 212, 209, 204, 207, 205] };
+  const LOG = ['danser › chargement de la map, du skin et du replay', 'danser › enregistrement 1920 × 1080 · 60 i/s',
+    'cœurs › cercles, sliders, curseur, fond · flou ×8 : 8 sous-images par image', 'mémoire › textures du skin + 8 sous-images du flou gardées sur la carte',
+    'encodeur › H.264 (NVENC) · 48 Mb/s · les cœurs restent libres', 'ventilateur › 2 120 tr/min · l’air traverse les ailettes puis la carte',
+    'PCIe › images vers le processeur · overlay et ffmpeg en 4 tranches parallèles'];
+  const KEY = [null, null, 'die', 'vram', 'enc', 'fans', 'pcie'];
+  const v = { gpu: 0, vram: 0, enc: 0, fan: 0, temp: 40, pcie: 0, fps: 0 }, hist = { gpu: [], fan: [] };
+  let chap = 0, frame = 0, timer = 0, last = performance.now();
+  const spark = (c, data, max) => {
+    const g = c.getContext('2d'), w = c.width, h = c.height; g.clearRect(0, 0, w, h);
+    g.beginPath(); data.forEach((y, i) => g[i ? 'lineTo' : 'moveTo'](i / 59 * w, h - 3 - y / max * (h - 6)));
+    g.strokeStyle = '#7aa7ff'; g.lineWidth = 2; g.stroke();
+    g.lineTo(w * (data.length - 1) / 59, h); g.lineTo(0, h); g.closePath();
+    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(122,167,255,.35)'); gr.addColorStop(1, 'rgba(122,167,255,0)'); g.fillStyle = gr; g.fill();
+  };
+  const tick = () => {
+    const now = performance.now(), dt = Math.min(.5, (now - last) / 1000); last = now;
+    for (const k of Object.keys(v)) { const target = T[k][chap] * (k === 'fps' || k === 'vram' || k === 'temp' ? 1 : 1 + (Math.random() - .5) * .06); v[k] += (target - v[k]) * Math.min(1, dt * 3); }
+    frame += v.fps * dt;
+    for (const [k, max] of [['gpu', 100], ['fan', 2400]]) { hist[k].push(Math.min(max, v[k])); if (hist[k].length > 60) hist[k].shift(); }
+    el('tmFrame').textContent = fr(frame) + ' / 9 600'; el('tmFps').textContent = fr(v.fps);
+    el('tmGpu').textContent = fr(Math.min(100, v.gpu)) + ' %'; spark(el('tmGpuSpark'), hist.gpu, 100);
+    el('tmVram').textContent = f1(v.vram) + ' Go'; el('tmVramBar').style.width = (v.vram / 16 * 100).toFixed(1) + '%';
+    el('tmEnc').textContent = fr(Math.min(100, v.enc)) + ' %'; el('tmEncBar').style.width = Math.min(100, v.enc).toFixed(1) + '%';
+    el('tmFan').textContent = fr(v.fan) + ' tr/min'; el('tmTemp').textContent = 'puce ' + fr(v.temp) + ' °C'; spark(el('tmFanSpark'), hist.fan, 2400);
+    el('tmPcie').textContent = f1(v.pcie) + ' Go/s'; el('tmPcieBar').style.width = (v.pcie / 16 * 100).toFixed(1) + '%';
+  };
+  return {
+    chapter(c) {
+      if (c === chap && timer) return; chap = c;
+      for (const [k, r] of Object.entries(rows)) r.classList.toggle('on', KEY[c] === k);
+      el('tmLog').textContent = LOG[c];
+    },
+    run(on) { if (on && !timer) { last = performance.now(); timer = setInterval(tick, 100); tick(); } else if (!on && timer) { clearInterval(timer); timer = 0; } },
+  };
+})();
+
 // Sous le capot : la carte 3D (gpu3d.js, Three.js) est chargée quand la section approche, puis pilotée par le défilement.
 const gpuSec = document.getElementById('capot'), gpuStage = document.getElementById('gpuStage');
 const gchap = [...document.querySelectorAll('.gchap li')], gbars = [...document.querySelectorAll('.gpu-bars i')];
@@ -90,7 +134,8 @@ function gpu() {
   if (!gpuSec) return;
   const p = gpuProgress();
   let c = 0; while (c < gchap.length - 1 && p >= CHAP[c + 1]) c++;
-  if (c !== lastChap) { lastChap = c; gchap.forEach((li, i) => li.classList.toggle('on', i === c)); gpuSec.classList.toggle('deep', c >= 2); }
+  if (c !== lastChap) { lastChap = c; gchap.forEach((li, i) => li.classList.toggle('on', i === c)); gpuSec.classList.toggle('deep', c >= 2); tm?.chapter(c); }
+  { const r = gpuSec.getBoundingClientRect(); tm?.run(!calm && r.bottom > 0 && r.top < innerHeight); }
   gbars.forEach((b, i) => b.style.setProperty('--f', clamp((p - CHAP[i]) / (CHAP[i + 1] - CHAP[i])).toFixed(3)));
   if (gpu3d) { gpu3d.progress = p; const r = gpuSec.getBoundingClientRect(); gpu3d.setVisible(r.bottom > 0 && r.top < innerHeight); }
 }
@@ -103,7 +148,7 @@ if (gpuSec) {
       for (const [k, el] of Object.entries(callouts)) {
         const q = pts[k]; if (!q) continue;
         el.classList.toggle('on', q.on && q.front);
-        el.classList.toggle('left', q.x > gpuStage.clientWidth * .55);
+        el.classList.toggle('left', q.x > gpuStage.clientWidth * (innerWidth <= 900 ? .4 : .55));
         el.style.transform = `translate3d(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px, 0)`;
       }
     };
