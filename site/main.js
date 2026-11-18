@@ -46,27 +46,28 @@ function anatomy() {
   if (tc) { const f = Math.round(6252 + p * 900); tc.textContent = `00:${String(Math.floor(f / 3600)).padStart(2, '0')}:${String(Math.floor(f / 60) % 60).padStart(2, '0')}:${String(f % 60).padStart(2, '0')}`; }
 }
 
-// Pile de cartes : chaque carte monte et se pose devant ; les précédentes reculent vers le haut, rapetissent
-// et s'assombrissent jusqu'à ne laisser voir que leur bord.
-const files = document.getElementById('fonctions'), sheets = [...document.querySelectorAll('.sheet')];
+// Dossiers qui s'additionnent : chaque dossier tombe sur la pile avec un léger rebond, sa feuille sort ;
+// les dossiers recouverts reculent, leur feuille rentre et ils s'empilent un peu de travers, onglets visibles.
+const files = document.getElementById('fonctions'), sheets = [...document.querySelectorAll('.folder')];
 const chapters = [...document.querySelectorAll('.chapters li')], chapNow = document.getElementById('chapNow');
 const filesRun = () => files.offsetHeight - innerHeight;
+const backOut = t => { const c = 1.35; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
+const TILT = [-1.2, 1.4, -0.8, 1.6, -1.4];
 function pile() {
   const n = sheets.length, r = files.getBoundingClientRect();
-  // chaque carte arrive pendant les 60 % de son tronçon, puis reste posée
   const raw = clamp(-r.top / Math.max(1, filesRun())) * (n - 1), seg = Math.min(n - 2, Math.floor(raw));
-  const cur = raw >= n - 1 ? n - 1 : seg + smooth(clamp((raw - seg) / 0.6));
-  const lift = innerWidth <= 900 ? 12 : 16;
+  const cur = raw >= n - 1 ? n - 1 : seg + clamp((raw - seg) / 0.6);
+  const lift = innerWidth <= 900 ? 22 : 34;
   sheets.forEach((el, i) => {
     const d = cur - i;
-    let ty = 0, sc = 1, rx = 0, dim = 0, show = 1;
-    if (d < 0) { const e = clamp(d + 1); ty = (1 - e) * innerHeight * .85; rx = (1 - e) * 14; sc = 1 + (1 - e) * .04; }
-    else { const k = Math.min(d, 3); ty = -k * lift; sc = 1 - k * .05; dim = k * .22; show = 1 - clamp(d * 2); }
-    el.style.transform = `perspective(1600px) translate3d(0, ${ty.toFixed(1)}px, 0) rotateX(${rx.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
-    el.style.filter = dim ? `brightness(${(1 - Math.min(dim, .7)).toFixed(3)})` : '';
+    let ty = 0, sc = 1, rot = 0, dim = 0, out = 0;
+    if (d < 0) { const e = clamp(d + 1), b = backOut(e); ty = (1 - b) * innerHeight * .95; rot = (1 - e) * 7 * (i % 2 ? 1 : -1); out = smooth(clamp((e - .55) / .45)); }
+    else { const k = Math.min(d, 3); ty = -k * lift; sc = 1 - k * .045; rot = TILT[i % 5] * Math.min(1, d); dim = k * .2; out = 1 - smooth(clamp(d * 1.8)); }
+    el.style.transform = `translate3d(0, ${ty.toFixed(1)}px, 0) rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
+    el.style.filter = dim ? `brightness(${(1 - Math.min(dim, .6)).toFixed(3)})` : '';
     el.style.visibility = d < -1 || d > 3.5 ? 'hidden' : '';
     el.style.zIndex = i;
-    el.querySelector('.sheet-copy').style.opacity = show.toFixed(3);
+    el.style.setProperty('--out', out.toFixed(3));
   });
   const now = Math.round(Math.max(0, cur));
   chapters.forEach((li, i) => { li.classList.toggle('on', i === now); li.querySelector('i').style.setProperty('--fill', i < now ? 1 : i === now ? clamp(raw - i + 1, 0, 1).toFixed(3) : 0); });
@@ -114,8 +115,27 @@ if (gpuSec) {
   else { const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { io.disconnect(); start(); } }, { rootMargin: '150% 0px' }); io.observe(gpuSec); }
 }
 
+// Export : la tête de lecture parcourt la timeline (intro, partie, fin), puis l'export se remplit et devient le bouton.
+const studio = document.getElementById('export');
+const monImgs = [...document.querySelectorAll('.mon-view img')], playhead = document.getElementById('playhead');
+const tcMon = document.getElementById('tcMon'), exportTxt = document.getElementById('exportTxt'), exportBtn = document.getElementById('exportBtn');
+let lastScene = null;
+function exportScene() {
+  if (!studio) return;
+  const r = studio.getBoundingClientRect(), p = calm ? .6 : clamp(-r.top / Math.max(1, r.height - innerHeight));
+  const ph = calm ? .6 : clamp(p / .72);
+  playhead.parentElement.style.setProperty('--ph', ph.toFixed(4));
+  const scene = ph < .15 ? 'intro' : ph < .85 ? 'jeu' : 'fin';
+  if (scene !== lastScene) { lastScene = scene; monImgs.forEach(im => im.classList.toggle('on', im.dataset.scene === scene)); }
+  const f = Math.round(ph * 160 * 60); tcMon.textContent = `00:${String(Math.floor(f / 3600)).padStart(2, '0')}:${String(Math.floor(f / 60) % 60).padStart(2, '0')}:${String(f % 60).padStart(2, '0')}`;
+  const e = calm ? 1 : clamp((p - .74) / .18);
+  studio.classList.toggle('rendering', e < 1);
+  exportBtn.style.setProperty('--ex', e.toFixed(3));
+  exportTxt.textContent = e >= 1 ? 'Télécharger Dancing!' : e > 0 ? `Export en cours… ${Math.floor(e * 100)} %` : 'Exporter la vidéo';
+}
+
 let ticking = false;
-const frame = () => { ticking = false; anatomy(); gpu(); if (!calm) pile(); };
+const frame = () => { ticking = false; anatomy(); gpu(); exportScene(); if (!calm) pile(); };
 const ask = () => { if (!ticking) { ticking = true; requestAnimationFrame(frame); } };
 addEventListener('scroll', ask, { passive: true });
 addEventListener('resize', ask);

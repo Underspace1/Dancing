@@ -6,6 +6,7 @@ import { RoomEnvironment } from './vendor/three/RoomEnvironment.js';
 import { RoundedBoxGeometry } from './vendor/three/RoundedBoxGeometry.js';
 
 const LEN = 30, DEP = 12;                       // longueur (x) et largeur (z) de la carte
+const PCB_L = 23.4, PCB_C = -3.3;               // circuit plus court : l'air traverse la carte sous le dernier ventilateur
 const ACCENT = new THREE.Color('#7aa7ff'), AIR = new THREE.Color('#9fe2ff');
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = t => t * t * (3 - 2 * t);
@@ -19,7 +20,7 @@ function canvasTex(w, h, draw, srgb = true) {
 }
 function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
 const pcbTexture = () => canvasTex(2048, 820, (g, w, h) => {
-  const r = rng(11), sx = w / LEN, sz = h / DEP, X = x => (x + LEN / 2) * sx, Z = z => (z + DEP / 2) * sz;
+  const r = rng(11), sx = w / PCB_L, sz = h / DEP, X = x => (x - PCB_C + PCB_L / 2) * sx, Z = z => (z + DEP / 2) * sz;
   g.fillStyle = '#0b1511'; g.fillRect(0, 0, w, h);
   const gr = g.createRadialGradient(X(-1.5), Z(0), 40, X(-1.5), Z(0), 900); gr.addColorStop(0, 'rgba(40,70,55,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = gr; g.fillRect(0, 0, w, h);
@@ -36,8 +37,8 @@ const pcbTexture = () => canvasTex(2048, 820, (g, w, h) => {
   g.strokeRect(X(-4.4), Z(-2.9), 5.8 * sx, 5.8 * sz);
   g.fillText('U1  GPU', X(-4.3), Z(-3.1));
   [[-6.6, -4.5], [-3.9, -5.2], [0.9, -5.2], [3.6, -4.5], [-6.6, 3.5], [-3.9, 4.2], [0.9, 4.2], [3.6, 3.5]].forEach(([x, z], i) => g.fillText('M' + (i + 1), X(x), Z(z) - 6));
-  g.font = '700 26px "Inter Tight", sans-serif'; g.fillText('DANCING!  RT-01', X(9.5), Z(4.8));
-  g.font = '500 18px "JetBrains Mono", monospace'; g.fillText('REV 3.4  ·  PCIe x16', X(9.5), Z(5.5));
+  g.font = '700 26px "Inter Tight", sans-serif'; g.fillText('DANCING!  RT-01', X(-13.5), Z(4.9));
+  g.font = '500 18px "JetBrains Mono", monospace'; g.fillText('REV 3.4  ·  PCIe x16', X(-13.5), Z(5.6));
 });
 const backTexture = () => canvasTex(2048, 820, (g, w, h) => {
   const lg = g.createLinearGradient(0, 0, w, 0); lg.addColorStop(0, '#202227'); lg.addColorStop(.5, '#2a2c32'); lg.addColorStop(1, '#1d1f24');
@@ -133,11 +134,26 @@ export function mountGPU(host, { calm = false } = {}) {
 
   // ----- plaque arrière -----
   const back = new THREE.Group(); card.add(back);
-  back.add(new THREE.Mesh(new RoundedBoxGeometry(LEN, .14, DEP, 3, .07), M.back));
+  {
+    const sh = new THREE.Shape(), w = LEN / 2, d = DEP / 2, r = .8;
+    sh.moveTo(-w + r, -d); sh.lineTo(w - r, -d); sh.quadraticCurveTo(w, -d, w, -d + r); sh.lineTo(w, d - r); sh.quadraticCurveTo(w, d, w - r, d);
+    sh.lineTo(-w + r, d); sh.quadraticCurveTo(-w, d, -w, d - r); sh.lineTo(-w, -d + r); sh.quadraticCurveTo(-w, -d, -w + r, -d);
+    const hole = new THREE.Path(); hole.moveTo(9, -4.3); hole.lineTo(9, 4.3); hole.lineTo(14, 4.3); hole.lineTo(14, -4.3); hole.closePath(); sh.holes.push(hole);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: .12, bevelEnabled: true, bevelThickness: .03, bevelSize: .03, bevelSegments: 2 });
+    g.rotateX(-Math.PI / 2);
+    // UV de la texture brossée : x et z de la plaque
+    const uv = g.attributes.uv, ps = g.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (ps.getX(i) + w) / LEN, 1 - (ps.getZ(i) + d) / DEP);
+    back.add(new THREE.Mesh(g, M.back));
+    // vis de la plaque arrière
+    for (const [x, z] of [[-14, -5.2], [-14, 5.2], [-6, -5.2], [-6, 5.2], [2.5, -5.2], [2.5, 5.2], [-3.4, -2.6], [.4, -2.6], [-3.4, 2.6], [.4, 2.6]]) {
+      const sc = new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, .08, 20), M.cap); sc.position.set(x, -.06, z); back.add(sc);
+    }
+  }
 
   // ----- circuit et composants -----
   const pcbG = new THREE.Group(); card.add(pcbG);
-  pcbG.add(new THREE.Mesh(new RoundedBoxGeometry(LEN - .2, .16, DEP - .3, 2, .05), M.pcb));
+  { const b = new THREE.Mesh(new RoundedBoxGeometry(PCB_L, .16, DEP - .3, 2, .05), M.pcb); b.position.x = PCB_C; pcbG.add(b); }
   const tab = new THREE.Mesh(new THREE.BoxGeometry(14.5, .16, .9), M.pcb); tab.position.set(-1.2, 0, DEP / 2 - .1 + .45); pcbG.add(tab);
   const fingers = new THREE.InstancedMesh(new THREE.BoxGeometry(.32, .03, .75), M.gold, 36);
   const mtx = new THREE.Matrix4();
@@ -146,12 +162,17 @@ export function mountGPU(host, { calm = false } = {}) {
   const DIE = new THREE.Vector3(-1.5, 0, 0);
   const pkg = new THREE.Mesh(new RoundedBoxGeometry(5.6, .16, 5.6, 2, .04), M.substrate); pkg.position.set(DIE.x, .16, DIE.z); pcbG.add(pkg);
   const die = new THREE.Mesh(new RoundedBoxGeometry(3.4, .14, 3.4, 2, .03), M.die); die.position.set(DIE.x, .3, DIE.z); pcbG.add(die);
+  const smd = new THREE.InstancedMesh(new THREE.BoxGeometry(.16, .07, .3), M.cap, 48);
+  for (let i = 0; i < 48; i++) { const side = Math.floor(i / 12), t = (i % 12) / 11 - .5, a = side * Math.PI / 2, rr = 2.25;
+    const x = Math.cos(a) * rr - Math.sin(a) * t * 4, z = Math.sin(a) * rr + Math.cos(a) * t * 4;
+    mtx.makeRotationY(a).setPosition(DIE.x + x, .27, DIE.z + z); smd.setMatrixAt(i, mtx); }
+  pcbG.add(smd);
   const enc = new THREE.Mesh(new THREE.BoxGeometry(1.05, .02, 1.05), M.enc); enc.position.set(DIE.x + 1.05, .385, DIE.z - 1.05); pcbG.add(enc);
   const VRAM = [[-6.6, -3.9], [-3.9, -4.6], [.9, -4.6], [3.6, -3.9], [-6.6, 3.9], [-3.9, 4.6], [.9, 4.6], [3.6, 3.9]];
   VRAM.forEach(([x, z]) => { const m = new THREE.Mesh(new RoundedBoxGeometry(1.9, .16, 1.3, 2, .03), M.vram); m.position.set(x + .6, .16, z); pcbG.add(m); });
-  for (let i = 0; i < 9; i++) { const c = new THREE.Mesh(new RoundedBoxGeometry(.85, .7, .85, 2, .08), M.choke); c.position.set(6.8 + (i % 3) * 1.15, .42, -3.6 + Math.floor(i / 3) * 1.25); pcbG.add(c); }
-  for (let i = 0; i < 12; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(.28, .28, .55, 20), M.cap); c.position.set(10.8 + (i % 4) * .7, .36, -3.4 + Math.floor(i / 4) * .9); pcbG.add(c); }
-  const power = new THREE.Mesh(new RoundedBoxGeometry(2.4, .9, 1.2, 2, .1), M.port); power.position.set(12.4, .55, -DEP / 2 + 1.1); pcbG.add(power);
+  for (let i = 0; i < 8; i++) { const c = new THREE.Mesh(new RoundedBoxGeometry(.8, .7, .8, 2, .08), M.choke); c.position.set(5.75 + (i % 2) * 1.05, .42, -2.1 + Math.floor(i / 2) * 1.0); pcbG.add(c); }
+  for (let i = 0; i < 6; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(.26, .26, .55, 20), M.cap); c.position.set(5.6 + (i % 3) * .7, .36, 3.0 + Math.floor(i / 3) * .7); pcbG.add(c); }
+  const power = new THREE.Mesh(new RoundedBoxGeometry(2.2, .9, 1.1, 2, .1), M.port); power.position.set(6.6, .55, -DEP / 2 + 1.1); pcbG.add(power);
   // équerre et sorties vidéo
   const bracket = new THREE.Mesh(new RoundedBoxGeometry(.14, 4.4, DEP + .4, 2, .05), M.bracket); bracket.position.set(-LEN / 2 - .2, 1.6, 0); pcbG.add(bracket);
   for (let i = 0; i < 4; i++) { const p = new THREE.Mesh(new RoundedBoxGeometry(.3, .9, i < 3 ? 1.9 : 1.6, 2, .06), M.port); p.position.set(-LEN / 2 - .3, .35, -4 + i * 2.6); pcbG.add(p); }
@@ -161,6 +182,8 @@ export function mountGPU(host, { calm = false } = {}) {
   const FINS = 104, fins = new THREE.InstancedMesh(new THREE.BoxGeometry(.07, 1.75, DEP - .9), M.fin, FINS);
   for (let i = 0; i < FINS; i++) { mtx.makeTranslation(-LEN / 2 + .9 + i * ((LEN - 1.8) / (FINS - 1)), 1.42, 0); fins.setMatrixAt(i, mtx); }
   heat.add(fins);
+  const padM = new THREE.MeshStandardMaterial({ color: 0x8d939c, roughness: .9, transparent: true });
+  VRAM.forEach(([x, z]) => { const m = new THREE.Mesh(new RoundedBoxGeometry(1.8, .1, 1.2, 2, .03), padM); m.position.set(x + .6, .3, z); heat.add(m); });
   const plate = new THREE.Mesh(new RoundedBoxGeometry(5.2, .34, 5.2, 2, .05), M.copper); plate.position.set(DIE.x, .55, DIE.z); heat.add(plate);
   [-1.8, -.6, .6, 1.8].forEach((z, i) => {
     const dir = i % 2 ? 1 : -1, xe = dir * (LEN / 2 - 1.6);
@@ -174,6 +197,10 @@ export function mountGPU(host, { calm = false } = {}) {
   const shroud = new THREE.Mesh(shroudGeometry(FANS.map(x => [x, R])), M.shroud); shroud.position.y = 2.35; top.add(shroud);
   // arêtes satinées entre les ventilateurs et liseré lumineux
   [-4.85, 4.85].forEach(x => { const t = new THREE.Mesh(new RoundedBoxGeometry(.5, .12, DEP - 1.6, 2, .05), M.trim); t.position.set(x, 3.06, 0); t.rotation.y = .12 * Math.sign(x); top.add(t); });
+  for (const [x, z] of [[-14.2, -5.2], [-14.2, 5.2], [14.2, -5.2], [14.2, 5.2], [-4.85, -5.3], [4.85, -5.3], [-4.85, 5.3], [4.85, 5.3]]) {
+    const sc = new THREE.Mesh(new THREE.CylinderGeometry(.17, .17, .06, 20), M.trim); sc.position.set(x, 3.0, z); top.add(sc);
+  }
+  const edge = new THREE.Mesh(new RoundedBoxGeometry(LEN - 6, .5, .06, 2, .02), M.led); edge.position.set(0, 2.6, -DEP / 2 - .12); top.add(edge);
   const led = new THREE.Mesh(new RoundedBoxGeometry(LEN - 3, .06, .12, 2, .03), M.led); led.position.set(0, 3.02, DEP / 2 - .32); top.add(led);
   const plaque = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.05), new THREE.MeshBasicMaterial({ map: labelTexture('DANCING!', 'RT-01 · RENDER'), transparent: true, depthWrite: false }));
   plaque.rotation.x = -Math.PI / 2; plaque.position.set(LEN / 2 - 3.1, 3.03, -DEP / 2 + 1.0); top.add(plaque);
@@ -238,7 +265,7 @@ export function mountGPU(host, { calm = false } = {}) {
 
   let W = 1, H = 1, progress = 0, visible = true, raf = 0, last = performance.now(), spin = 0, yaw = 0;
   const fadeTop = v => { for (const m of [M.shroud, M.trim, M.led, M.blade, M.hub, M.fanRing]) m.opacity = v; plaque.material.opacity = v; for (const f of fans) f.rotor.children.at(-1).material.opacity = v; };
-  const fadeHeat = v => { M.fin.opacity = v; M.copper.opacity = v; };
+  const fadeHeat = v => { M.fin.opacity = v; M.copper.opacity = v; padM.opacity = v; };
 
   function resize() {
     const r = host.getBoundingClientRect(); W = Math.max(1, r.width); H = Math.max(1, r.height);
@@ -284,6 +311,7 @@ export function mountGPU(host, { calm = false } = {}) {
         const f = seed[i * 4], a0 = seed[i * 4 + 1], r0 = seed[i * 4 + 2], side = seed[i * 4 + 3], cx = FANS[f];
         let x, y, z, b;
         if (l < .4) { const k = l / .4, ang = a0 + spin * .6 * fans[f].dir + k * 2; x = cx + Math.cos(ang) * r0; z = Math.sin(ang) * r0 * .9; y = fy + 4.5 * (1 - k) - .4; b = smooth(k) * .9; }
+        else if (f === 2 && side > 0) { const k = (l - .4) / .6; x = cx + Math.cos(a0) * r0 * .55; z = Math.sin(a0) * r0 * .5; y = hy - k * (hy - back.position.y + 4); b = (1 - k) * .9; }   // traversant : l'air ressort par la plaque arrière
         else { const k = (l - .4) / .6, ang = a0; x = cx + Math.cos(ang) * r0 * (1 + k * .5); y = hy + Math.sin(a0 * 3) * .5; z = side * (Math.abs(Math.sin(ang)) * r0 * .5 + k * (DEP / 2 + 5)); b = (1 - k) * .9; }
         pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
         const c = b * Math.max(0, strength); col[i * 3] = AIR.r * c; col[i * 3 + 1] = AIR.g * c; col[i * 3 + 2] = AIR.b * c;

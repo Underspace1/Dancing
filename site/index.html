@@ -119,7 +119,7 @@
       </figure>
     </section>
 
-    <!-- Fonctions : pile de cartes ; chaque carte se pose devant, les précédentes reculent -->
+    <!-- Fonctions : dossiers qui s'additionnent ; chaque dossier tombe sur la pile, sa feuille dépasse, les précédents se referment -->
     <section class="files" id="fonctions" style="--n:5">
       <div class="files-pin">
         <div class="files-side">
@@ -137,25 +137,30 @@
           <p class="counter mono" aria-hidden="true"><b id="chapNow">01</b> / 05</p>
         </div>
         <div class="pile" id="pile">
-          <article class="sheet" style="--i:0">
-            <div class="sheet-media"><img src="assets/overlay.jpg" width="1600" height="900" loading="lazy" alt="Un replay rendu avec l’overlay Dancing! : bandeau de vie, classement, combo et pp"></div>
-            <div class="sheet-copy"><span class="mono">01 — Overlay</span><h3>Un overlay de tournoi, à ton style.</h3><p>Bandeau de vie, combo et pp qui défilent, barre d’erreur, classement trié par pp. Dix presets, couleurs et disposition réglables à la souris.</p></div>
+          <article class="folder" style="--i:0; --tint:#4c6ef5">
+            <div class="f-back"><span class="f-tab mono">01 · Overlay</span></div>
+            <div class="f-paper"><img src="assets/overlay.jpg" width="1600" height="900" loading="lazy" alt="Un replay rendu avec l’overlay Dancing! : bandeau de vie, classement, combo et pp"></div>
+            <div class="f-front"><span class="mono">01 — Overlay</span><h3>Un overlay de tournoi, à ton style.</h3><p>Bandeau de vie, combo et pp qui défilent, barre d’erreur, classement trié par pp. Dix presets, couleurs et disposition réglables à la souris.</p></div>
           </article>
-          <article class="sheet" style="--i:1">
-            <div class="sheet-media"><img src="assets/mania-colonne.jpg" width="1600" height="900" loading="lazy" alt="Replay osu!mania avec l’overlay Colonne"></div>
-            <div class="sheet-copy"><span class="mono">02 — osu!mania</span><h3>Le mania, avec son propre moteur.</h3><p>danser ne le gère pas : Dancing! a son propre moteur. Notes longues, jugements, musique, et trois overlays rien que pour lui.</p></div>
+          <article class="folder" style="--i:1; --tint:#7950f2">
+            <div class="f-back"><span class="f-tab mono">02 · osu!mania</span></div>
+            <div class="f-paper"><img src="assets/mania-colonne.jpg" width="1600" height="900" loading="lazy" alt="Replay osu!mania avec l’overlay Colonne"></div>
+            <div class="f-front"><span class="mono">02 — osu!mania</span><h3>Le mania, avec son propre moteur.</h3><p>danser ne le gère pas : Dancing! a son propre moteur. Notes longues, jugements, musique, et trois overlays rien que pour lui.</p></div>
           </article>
-          <article class="sheet" style="--i:2">
-            <div class="sheet-media"><img src="assets/store.jpg" width="1480" height="920" loading="lazy" alt="La bibliothèque de widgets de Dancing!"></div>
-            <div class="sheet-copy"><span class="mono">03 — Widgets</span><h3>Des widgets en verre, ou les tiens.</h3><p>Neuf widgets où le jeu derrière est vraiment flouté, tout le catalogue tosu, et un créateur sans code : 26 données, polices, couleurs, animations.</p></div>
+          <article class="folder" style="--i:2; --tint:#15aabf">
+            <div class="f-back"><span class="f-tab mono">03 · Widgets</span></div>
+            <div class="f-paper"><img src="assets/store.jpg" width="1480" height="920" loading="lazy" alt="La bibliothèque de widgets de Dancing!"></div>
+            <div class="f-front"><span class="mono">03 — Widgets</span><h3>Des widgets en verre, ou les tiens.</h3><p>Neuf widgets où le jeu derrière est vraiment flouté, tout le catalogue tosu, et un créateur sans code : 26 données, polices, couleurs, animations.</p></div>
           </article>
-          <article class="sheet" style="--i:3">
-            <div class="sheet-media"><img src="assets/fin-loupe.jpg" width="1600" height="900" loading="lazy" alt="L’écran de fin Loupe : la note dans un cercle en verre et le classement de la map"></div>
-            <div class="sheet-copy"><span class="mono">04 — Scènes</span><h3>Une intro, une vraie fin.</h3><p>Carte de la map avant la partie. Après, l’écran Loupe (ta note dans un cercle en verre, le classement de la map) ou Classique. La musique de la map joue dessous.</p></div>
+          <article class="folder" style="--i:3; --tint:#f08c00">
+            <div class="f-back"><span class="f-tab mono">04 · Scènes</span></div>
+            <div class="f-paper"><img src="assets/fin-loupe.jpg" width="1600" height="900" loading="lazy" alt="L’écran de fin Loupe : la note dans un cercle en verre et le classement de la map"></div>
+            <div class="f-front"><span class="mono">04 — Scènes</span><h3>Une intro, une vraie fin.</h3><p>Carte de la map avant la partie. Après, l’écran Loupe (ta note dans un cercle en verre, le classement de la map) ou Classique. La musique de la map joue dessous.</p></div>
           </article>
-          <article class="sheet" style="--i:4">
-            <div class="sheet-media"><img src="assets/installateur.jpg" width="1640" height="1040" loading="lazy" alt="L’installateur de Dancing!"></div>
-            <div class="sheet-copy"><span class="mono">05 — Installation</span><h3>Un fichier. Rien d’autre à installer.</h3><p>danser, tosu, ffmpeg et le moteur des widgets sont inclus. Les nouvelles versions sont proposées au démarrage et s’installent en un clic, réglages gardés.</p></div>
+          <article class="folder" style="--i:4; --tint:#e64980">
+            <div class="f-back"><span class="f-tab mono">05 · Installation</span></div>
+            <div class="f-paper"><img src="assets/installateur.jpg" width="1640" height="1040" loading="lazy" alt="L’installateur de Dancing!"></div>
+            <div class="f-front"><span class="mono">05 — Installation</span><h3>Un fichier. Rien d’autre à installer.</h3><p>danser, tosu, ffmpeg et le moteur des widgets sont inclus. Les nouvelles versions sont proposées au démarrage et s’installent en un clic, réglages gardés.</p></div>
           </article>
         </div>
       </div>
@@ -198,10 +203,37 @@
       </div>
     </section>
 
-    <section class="final">
-      <p class="mono label">Windows 10 / 11 · gratuit</p>
-      <h2 class="final-title">Ton prochain replay mérite mieux qu’un enregistrement d’écran.</h2>
-      <a class="btn btn-lg" href="https://github.com/Underspace1/Dancing/releases/latest" data-dl>Télécharger Dancing!</a>
+    <!-- Export : mini logiciel de montage ; la tête de lecture avance au défilement, puis l'export se lance -->
+    <section class="studio" id="export" aria-label="Exporter ta vidéo">
+      <div class="studio-pin">
+        <div class="studio-head">
+          <p class="mono label">Windows 10 / 11 · gratuit</p>
+          <h2 class="title">Ton prochain replay, prêt à poster.</h2>
+        </div>
+        <div class="studio-app">
+          <div class="monitor">
+            <div class="mon-bar mono"><span>Aperçu</span><span id="tcMon">00:00:00:00</span><span>1920 × 1080 · 60 i/s</span></div>
+            <div class="mon-view">
+              <img src="assets/intro.jpg" width="1600" height="900" loading="lazy" alt="" data-scene="intro">
+              <img src="assets/overlay.jpg" width="1600" height="900" loading="lazy" alt="" data-scene="jeu">
+              <img src="assets/fin-loupe.jpg" width="1600" height="900" loading="lazy" alt="" data-scene="fin">
+            </div>
+          </div>
+          <div class="timeline" aria-hidden="true">
+            <div class="ruler"></div>
+            <div class="track"><span class="mono">V3</span><div class="lane"><i class="clip c-wid" style="left:15%;width:70%">Widgets</i></div></div>
+            <div class="track"><span class="mono">V2</span><div class="lane"><i class="clip c-ov" style="left:15%;width:70%">Overlay · Référence</i></div></div>
+            <div class="track"><span class="mono">V1</span><div class="lane"><i class="clip c-rep" style="left:15%;width:70%">Replay · danser</i></div></div>
+            <div class="track"><span class="mono">SC</span><div class="lane"><i class="clip c-sc" style="left:0;width:15%">Intro</i><i class="clip c-sc" style="left:85%;width:15%">Fin · Loupe</i></div></div>
+            <div class="track"><span class="mono">A1</span><div class="lane"><i class="clip c-au" style="left:0;width:100%"></i></div></div>
+            <div class="playhead" id="playhead"></div>
+          </div>
+          <a class="export" id="exportBtn" href="https://github.com/Underspace1/Dancing/releases/latest" data-dl>
+            <span class="export-fill" aria-hidden="true"></span>
+            <span class="export-txt" id="exportTxt">Télécharger Dancing!</span>
+          </a>
+        </div>
+      </div>
     </section>
   </main>
 
