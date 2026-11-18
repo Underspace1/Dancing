@@ -110,25 +110,30 @@ ol { padding: 0; list-style: none; }
 .reel-track { height: 2px; background: var(--ink-line); position: relative; }
 .reel-track i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--pink); }
 
-/* Fonctions : classeur, les dossiers tombent sur la pile ; les onglets des dossiers posés restent visibles */
-.files { position: relative; height: calc(var(--n) * 85vh + 40vh); border-top: 1px solid var(--ink-line); }
-.files-pin { position: sticky; top: 64px; height: calc(100vh - 64px); display: grid; grid-template-rows: auto 1fr; padding-top: clamp(28px, 6vh, 64px); overflow: hidden; }
-.files .section-head { margin-bottom: 0; width: 100%; }
-.pile { position: relative; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); perspective: 1800px; perspective-origin: 50% -20%; }
-.folder { --tabw: calc((100% - 4 * 6px) / 5); position: absolute; left: var(--gutter); right: var(--gutter); top: calc(56px + 4 * 22px); bottom: clamp(16px, 4vh, 40px); transform-origin: 50% 0; will-change: transform; }
-.tab { position: absolute; bottom: calc(100% - 1px); left: calc(var(--i) * (var(--tabw) + 6px)); width: var(--tabw); display: flex; align-items: center; gap: 10px; padding: 10px 14px; font: 600 14px/1.2 var(--sans); color: var(--on-ink-mute); text-align: left; background: var(--folder); border: 1px solid var(--ink-line); border-bottom: 0; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s; }
-.tab .mono { color: var(--on-ink-mute); }
-.tab:hover { color: var(--on-ink); }
-.folder.on .tab { color: var(--on-ink); }
-.folder.on .tab .mono { color: var(--pink); }
-.folder { --folder: #17171c; }
-.folder-body { height: 100%; display: grid; grid-template-columns: minmax(240px, 4fr) 8fr; gap: clamp(20px, 3vw, 48px); align-items: center; padding: clamp(20px, 3vw, 40px); background: var(--folder); border: 1px solid var(--ink-line); border-radius: 0 8px 8px 8px; box-shadow: 0 -18px 40px -24px rgba(0, 0, 0, .9); overflow: hidden; }
-.folder:not(:first-child) .folder-body { border-top-left-radius: 8px; }
-.folder-body > * { transition: opacity .3s var(--ease); }
-.folder-copy { display: grid; gap: 14px; align-content: center; }
-.folder h3 { font-weight: 800; font-size: clamp(24px, 2.6vw, 38px); line-height: 1.05; letter-spacing: -.035em; }
-.folder p { color: var(--on-ink-mute); max-width: 42ch; }
-.folder img { width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; border: 1px solid var(--ink-line); }
+/* Fonctions : pile de cartes façon portefeuille ; la carte posée devant, les précédentes reculent vers le haut */
+.files { position: relative; height: calc(var(--n) * 90vh + 30vh); border-top: 1px solid var(--ink-line); }
+.files-pin { position: sticky; top: 64px; height: calc(100vh - 64px); max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); display: grid; grid-template-columns: minmax(260px, 4fr) 8fr; gap: clamp(24px, 4vw, 64px); align-items: center; }
+.files-side { display: grid; gap: 36px; }
+.files .section-head { padding: 0; margin: 0; }
+.files .title { font-size: clamp(30px, 3.4vw, 48px); }
+.chapters { display: grid; border-top: 1px solid var(--ink-line); }
+.chapters button { position: relative; width: 100%; display: flex; align-items: baseline; gap: 16px; padding: 14px 0; font: 600 17px/1.2 var(--sans); letter-spacing: -.01em; color: var(--on-ink-mute); background: none; border: 0; border-bottom: 1px solid var(--ink-line); text-align: left; cursor: pointer; transition: color .3s var(--ease); }
+.chapters button:hover, .chapters li.on button { color: var(--on-ink); }
+.chapters .mono { color: inherit; opacity: .6; }
+.chapters li.on .mono { color: var(--pink); opacity: 1; }
+.chapters i { position: absolute; left: 0; bottom: -1px; height: 1px; width: calc(var(--fill, 0) * 100%); background: var(--pink); }
+.counter { display: none; color: var(--on-ink-mute); }
+.counter b { color: var(--on-ink); font-weight: 500; }
+
+.pile { position: relative; height: min(76vh, 640px); align-self: center; }
+.sheet { position: absolute; inset: auto 0 0 0; display: grid; grid-template-rows: auto auto; gap: 0; padding: 10px; border-radius: 22px; background: linear-gradient(180deg, #1d1d23 0%, #131317 100%); border: 1px solid rgba(255, 255, 255, .08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 30px 70px -30px rgba(0, 0, 0, .9), 0 10px 24px -12px rgba(0, 0, 0, .6); transform-origin: 50% 0; will-change: transform; }
+.sheet-media { overflow: hidden; border-radius: 14px; background: var(--ink); aspect-ratio: 16 / 9; }
+.sheet-media img { width: 100%; height: 100%; object-fit: cover; }
+.sheet-copy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 4px 32px; align-items: start; padding: 18px 14px 10px; }
+.sheet-copy .mono { grid-column: 1 / -1; color: var(--pink); }
+.sheet h3 { font-weight: 800; font-size: clamp(20px, 1.9vw, 28px); line-height: 1.08; letter-spacing: -.03em; }
+.sheet p { color: var(--on-ink-mute); font-size: 15px; }
+.sheet-copy, .sheet-media img { transition: opacity .25s var(--ease); }
 
 /* Fiche technique */
 .spec { padding: clamp(72px, 12vh, 140px) 0 clamp(40px, 6vh, 64px); }
@@ -173,13 +178,14 @@ ol { padding: 0; list-style: none; }
   .steps p { max-height: none; }
   .stage { order: 1; margin-top: 40px; }
   .timecode { display: none; }
-  .folder { top: calc(40px + 4 * 14px); }
-  .tab { padding: 8px 6px; font-size: 12px; justify-content: center; }
-  .tab .mono { display: none; }
-  .folder-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-items: start; gap: 14px; }
-  .folder-copy { gap: 6px; }
-  .folder p { font-size: 15px; }
-  .folder img { max-height: 32vh; }
+  .files-pin { grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-items: start; gap: 20px; padding-top: 28px; }
+  .files-side { gap: 10px; grid-template-columns: 1fr auto; align-items: end; }
+  .chapters { display: none; }
+  .counter { display: block; }
+  .pile { height: auto; align-self: stretch; margin-top: 36px; }
+  .sheet { inset: 0 0 auto 0; padding: 8px; border-radius: 18px; }
+  .sheet-media { border-radius: 12px; }
+  .sheet-copy { grid-template-columns: 1fr; padding: 14px 8px 8px; gap: 6px; }
   .spec-list { grid-template-columns: 1fr; }
   .spec-list div { grid-template-columns: 1fr; gap: 2px; }
   .reel-bar { grid-template-columns: auto 1fr; }
@@ -193,9 +199,8 @@ ol { padding: 0; list-style: none; }
   .steps li { opacity: 1; display: block; }
   .steps p { max-height: none; }
   .files { height: auto; }
-  .files-pin { position: static; height: auto; overflow: visible; }
-  .pile { display: grid; gap: 64px; padding-top: 56px; perspective: none; }
-  .folder { position: relative; inset: auto; transform: none !important; filter: none !important; }
-  .tab { left: 0; }
+  .files-pin { position: static; height: auto; padding-block: 64px; }
+  .pile { height: auto; display: grid; gap: 24px; }
+  .sheet { position: relative; inset: auto; transform: none !important; filter: none !important; }
   .fade { opacity: 1; transform: none; }
 }

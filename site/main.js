@@ -46,31 +46,35 @@ function anatomy() {
   if (tc) { const f = Math.round(6252 + p * 900); tc.textContent = `00:${String(Math.floor(f / 3600)).padStart(2, '0')}:${String(Math.floor(f / 60) % 60).padStart(2, '0')}:${String(f % 60).padStart(2, '0')}`; }
 }
 
-// Classeur : chaque dossier arrive du bas et tombe sur la pile ; ceux du dessous reculent, leurs onglets restent lisibles.
-const files = document.getElementById('fonctions'), folders = [...document.querySelectorAll('.folder')];
+// Pile de cartes : chaque carte monte et se pose devant ; les précédentes reculent vers le haut, rapetissent
+// et s'assombrissent jusqu'à ne laisser voir que leur bord.
+const files = document.getElementById('fonctions'), sheets = [...document.querySelectorAll('.sheet')];
+const chapters = [...document.querySelectorAll('.chapters li')], chapNow = document.getElementById('chapNow');
 const filesRun = () => files.offsetHeight - innerHeight;
 function pile() {
-  const n = folders.length, r = files.getBoundingClientRect();
-  // chaque dossier arrive pendant les 60 % de son tronçon, puis reste posé et lisible
+  const n = sheets.length, r = files.getBoundingClientRect();
+  // chaque carte arrive pendant les 60 % de son tronçon, puis reste posée
   const raw = clamp(-r.top / Math.max(1, filesRun())) * (n - 1), seg = Math.min(n - 2, Math.floor(raw));
   const cur = raw >= n - 1 ? n - 1 : seg + smooth(clamp((raw - seg) / 0.6));
-  const narrow = innerWidth <= 900;
-  folders.forEach((f, i) => {
+  const lift = innerWidth <= 900 ? 12 : 16;
+  sheets.forEach((el, i) => {
     const d = cur - i;
-    let ty = 0, tz = 0, rx = 0, dim = 0, show = 1;
-    if (d < 0) { const e = clamp(d + 1); ty = (1 - e) * innerHeight * .9; rx = -(1 - e) * 22; }
-    else { const k = Math.min(d, 4); ty = -k * (narrow ? 14 : 22); tz = -k * 60; rx = k * 2; dim = Math.min(k, 3) * .14; show = 1 - clamp(d * 1.6); }
-    f.style.transform = `translate3d(0, ${ty.toFixed(1)}px, ${tz.toFixed(1)}px) rotateX(${rx.toFixed(2)}deg)`;
-    f.style.filter = dim ? `brightness(${(1 - dim).toFixed(3)})` : '';
-    f.style.visibility = d < -1 ? 'hidden' : '';
-    f.style.zIndex = i;
-    f.querySelectorAll('.folder-body > *').forEach(el => { el.style.opacity = show.toFixed(3); });
-    f.classList.toggle('on', Math.round(Math.max(0, cur)) === i);
+    let ty = 0, sc = 1, rx = 0, dim = 0, show = 1;
+    if (d < 0) { const e = clamp(d + 1); ty = (1 - e) * innerHeight * .85; rx = (1 - e) * 14; sc = 1 + (1 - e) * .04; }
+    else { const k = Math.min(d, 3); ty = -k * lift; sc = 1 - k * .05; dim = k * .22; show = 1 - clamp(d * 2); }
+    el.style.transform = `perspective(1600px) translate3d(0, ${ty.toFixed(1)}px, 0) rotateX(${rx.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
+    el.style.filter = dim ? `brightness(${(1 - Math.min(dim, .7)).toFixed(3)})` : '';
+    el.style.visibility = d < -1 || d > 3.5 ? 'hidden' : '';
+    el.style.zIndex = i;
+    el.querySelector('.sheet-copy').style.opacity = show.toFixed(3);
   });
+  const now = Math.round(Math.max(0, cur));
+  chapters.forEach((li, i) => { li.classList.toggle('on', i === now); li.querySelector('i').style.setProperty('--fill', i < now ? 1 : i === now ? clamp(raw - i + 1, 0, 1).toFixed(3) : 0); });
+  if (chapNow) chapNow.textContent = String(now + 1).padStart(2, '0');
 }
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
-  const n = folders.length, i = +b.dataset.go;
-  if (calm) return b.closest('.folder').scrollIntoView();
+  const n = sheets.length, i = +b.dataset.go;
+  if (calm) return sheets[i].scrollIntoView();
   scrollTo({ top: files.offsetTop + ((i ? i - 0.3 : 0) / (n - 1)) * filesRun() + 1, behavior: 'smooth' });
 }));
 
