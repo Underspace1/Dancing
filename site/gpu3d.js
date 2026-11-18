@@ -2,7 +2,6 @@
 // Modèle procédural original : circuit, puce, mémoire, radiateur, caloducs, capot, ventilateurs, plaque arrière.
 // La progression de défilement (0 → 1) pilote l'éclatement, la caméra, la pièce mise en avant et le flux d'air.
 import * as THREE from 'three';
-import { RoomEnvironment } from './vendor/three/RoomEnvironment.js';
 import { RoundedBoxGeometry } from './vendor/three/RoundedBoxGeometry.js';
 
 const LEN = 30, DEP = 12;                       // longueur (x) et largeur (z) de la carte
@@ -65,6 +64,38 @@ function shadowTexture() {
   });
 }
 
+// Studio photo pour les reflets : grande boîte à lumière au-dessus, bandes latérales, contre-jour bleuté, fond noir.
+function studioScene() {
+  const sc = new THREE.Scene();
+  sc.add(new THREE.Mesh(new THREE.BoxGeometry(140, 90, 140), new THREE.MeshBasicMaterial({ color: 0x1b1d22, side: THREE.BackSide })));
+  const panel = (w, h, int, color, pos, look = [0, 0, 0]) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(int), side: THREE.DoubleSide })); m.position.set(...pos); m.lookAt(...look); sc.add(m); };
+  panel(60, 26, 4, 0xffffff, [0, 34, 4]);                  // grande boîte à lumière au-dessus
+  panel(56, 7, 2.6, 0xf4f6ff, [0, 24, -36]);               // bande derrière et au-dessus : un trait de reflet sur le panneau laqué
+  panel(54, 20, 1.6, 0xffffff, [0, 18, 52]);               // face à la carte : reflets des flancs
+  panel(6, 44, 4, 0xffffff, [-46, 14, 6]);                 // bande gauche
+  panel(5, 40, 5, 0x9cbcff, [44, 12, -20]);                // contre-jour bleuté
+  panel(70, 70, .5, 0x9aa0aa, [0, -34, 0]);                // sol gris
+  return sc;
+}
+// Textures de détail en niveaux de gris (rugosité, relief) : grain, brossé directionnel.
+function noiseTex(size, amp, rep, blur = 0) {
+  const t = canvasTex(size, size, (g, w, h) => {
+    const im = g.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) { const v = 128 + (Math.random() - .5) * amp; im.data.set([v, v, v, 255], i * 4); }
+    g.putImageData(im, 0, 0);
+    if (blur) { g.filter = `blur(${blur}px)`; g.drawImage(g.canvas, 0, 0); g.filter = 'none'; }
+  }, false);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep); return t;
+}
+function brushTex(rep, amp = 60) {
+  const t = canvasTex(1024, 256, (g, w, h) => {
+    g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
+    for (let k = 0; k < 2600; k++) { const y = Math.random() * h, v = 128 + (Math.random() - .5) * amp; g.fillStyle = `rgb(${v},${v},${v})`; g.globalAlpha = .5; g.fillRect(Math.random() * w - 200, y, 200 + Math.random() * 900, .7 + Math.random()); }
+    g.globalAlpha = 1;
+  }, false);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); return t;
+}
+
 // ---------- géométries ----------
 function bladeGeometry(r0, r1) {
   // pale fine à forte flèche, bout recourbé (ailette) ; 13 pales reliées par un anneau extérieur
@@ -114,12 +145,16 @@ export function mountGPU(host, { calm = false } = {}) {
   renderer.setClearColor(0x000000, 0);
 
   const scene = new THREE.Scene();
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.85;
-  const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-12, 24, 18); scene.add(key);
-  const rim = new THREE.DirectionalLight(0x8fb4ff, 1.6); rim.position.set(18, 8, -20); scene.add(rim);
-  scene.add(new THREE.AmbientLight(0x404858, .5));
+  scene.environment = pmrem.fromScene(studioScene(), 0.02).texture;
+  scene.environmentIntensity = 1.1;
+  const key = new THREE.DirectionalLight(0xfff4e8, 2.6); key.position.set(-10, 30, 14); scene.add(key);
+  key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -.0004; key.shadow.normalBias = .03; key.shadow.radius = 4;
+  Object.assign(key.shadow.camera, { left: -26, right: 26, top: 18, bottom: -18, near: 1, far: 90 });
+  const rim = new THREE.DirectionalLight(0x9cbcff, 2.2); rim.position.set(20, 10, -22); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xffffff, .5); fill.position.set(6, 6, 30); scene.add(fill);
+  scene.add(new THREE.HemisphereLight(0x8fa0c0, 0x0a0a0c, .35));
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 400);
   const card = new THREE.Group(); scene.add(card);
@@ -132,9 +167,9 @@ export function mountGPU(host, { calm = false } = {}) {
     blade: new THREE.MeshPhysicalMaterial({ color: 0x15161a, metalness: .1, roughness: .55, clearcoat: .2, side: THREE.DoubleSide, transparent: true }),
     hub: new THREE.MeshPhysicalMaterial({ color: 0x23252b, metalness: .9, roughness: .3, transparent: true }),
     fanRing: new THREE.MeshStandardMaterial({ color: 0x0e0f12, metalness: .4, roughness: .5, emissive: ACCENT, emissiveIntensity: 0, transparent: true }),
-    fin: new THREE.MeshStandardMaterial({ color: 0xb7bcc5, metalness: 1, roughness: .32, transparent: true }),
+    fin: new THREE.MeshPhysicalMaterial({ color: 0xc3c8d0, metalness: 1, roughness: .3, roughnessMap: brushTex([1, 4], 90), anisotropy: .6, transparent: true }),
     copper: new THREE.MeshStandardMaterial({ color: 0xc27a4e, metalness: 1, roughness: .24, transparent: true }),
-    pcb: new THREE.MeshStandardMaterial({ map: pcbTexture(), roughness: .62, metalness: .15 }),
+    pcb: (() => { const t = pcbTexture(); return new THREE.MeshPhysicalMaterial({ map: t, bumpMap: t, bumpScale: .9, roughness: .55, metalness: .1, clearcoat: .2, clearcoatRoughness: .45 }); })(),
     substrate: new THREE.MeshStandardMaterial({ color: 0x1f2a1d, roughness: .55, metalness: .2 }),
     die: new THREE.MeshPhysicalMaterial({ color: 0x15171c, metalness: 1, roughness: .12, clearcoat: 1, emissive: ACCENT, emissiveIntensity: 0 }),
     enc: new THREE.MeshStandardMaterial({ color: 0x0d0f14, roughness: .2, metalness: .6, emissive: ACCENT, emissiveIntensity: 0, transparent: true, opacity: .0 }),
@@ -213,14 +248,14 @@ export function mountGPU(host, { calm = false } = {}) {
   const brushed = patternTex(512, 64, (g, w, h) => { g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .25})`; g.fillRect(0, y, w, 1); } }, [.2, 1]);
   const windowAlpha = (w0, w1) => canvasTex(1024, 128, (g, w, h) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.fillStyle = '#000'; g.beginPath(); g.roundRect(w0 * w, 22, (w1 - w0) * w, h - 44, 18); g.fill(); }, false);
   const Mt = {
-    frame: new THREE.MeshPhysicalMaterial({ color: 0xa9afb8, metalness: 1, roughness: .2, clearcoat: .8, clearcoatRoughness: .12, bumpMap: brushed, bumpScale: .12 }),
-    panel: new THREE.MeshPhysicalMaterial({ color: 0x08090a, metalness: .55, roughness: .16, clearcoat: 1, clearcoatRoughness: .06 }),
+    frame: new THREE.MeshPhysicalMaterial({ color: 0xb4bac3, metalness: 1, roughness: .26, roughnessMap: brushTex([.08, 1.5], 110), bumpMap: brushTex([.08, 1.5], 50), bumpScale: .35, anisotropy: .85, clearcoat: .35, clearcoatRoughness: .2 }),
+    panel: new THREE.MeshPhysicalMaterial({ color: 0x0a0b0d, metalness: .7, roughness: .42, roughnessMap: noiseTex(256, 90, .35), bumpMap: noiseTex(256, 120, .35, .6), bumpScale: .25, clearcoat: 1, clearcoatRoughness: .04 }),
     plate: new THREE.MeshPhysicalMaterial({ color: 0x18191c, metalness: .9, roughness: .34, bumpMap: rings, bumpScale: 1.2 }),
-    wallZ: new THREE.MeshPhysicalMaterial({ color: 0x2b2e34, metalness: 1, roughness: .26, clearcoat: .7, clearcoatRoughness: .15, alphaMap: windowAlpha(.3, .62), alphaTest: .5, side: THREE.DoubleSide }),
-    wall: new THREE.MeshPhysicalMaterial({ color: 0x2b2e34, metalness: 1, roughness: .26, clearcoat: .7, clearcoatRoughness: .15, side: THREE.DoubleSide }),
+    wallZ: new THREE.MeshPhysicalMaterial({ color: 0x2e3137, metalness: 1, roughness: .38, roughnessMap: noiseTex(256, 120, 2), bumpMap: noiseTex(256, 140, 2, .5), bumpScale: .2, clearcoat: .5, clearcoatRoughness: .2, alphaMap: windowAlpha(.3, .62), alphaTest: .5, side: THREE.DoubleSide }),
+    wall: new THREE.MeshPhysicalMaterial({ color: 0x2e3137, metalness: 1, roughness: .38, roughnessMap: noiseTex(256, 120, 2), bumpMap: noiseTex(256, 140, 2, .5), bumpScale: .2, clearcoat: .5, clearcoatRoughness: .2, side: THREE.DoubleSide }),
     stator: new THREE.MeshStandardMaterial({ color: 0x111215, roughness: .6, metalness: .3 }),
     blade: new THREE.MeshPhysicalMaterial({ color: 0x0c0d10, roughness: .38, metalness: .1, clearcoat: .6, clearcoatRoughness: .25, side: THREE.DoubleSide }),
-    hub: new THREE.MeshPhysicalMaterial({ color: 0xd2d6dc, metalness: 1, roughness: .18, clearcoat: 1, map: canvasTex(512, 512, (g, w, h) => {
+    hub: new THREE.MeshPhysicalMaterial({ color: 0xb4b9c1, metalness: 1, roughness: .3, clearcoat: .6, map: canvasTex(512, 512, (g, w, h) => {
       g.fillStyle = '#a7adb5'; g.fillRect(0, 0, w, h);
       for (let r = 2; r < 256; r += 1.2) { g.strokeStyle = `rgba(255,255,255,${Math.random() * .3})`; g.beginPath(); g.arc(256, 256, r, 0, 7); g.stroke(); }
       const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(.5, 'rgba(0,0,0,.15)'); gr.addColorStop(1, 'rgba(255,255,255,.25)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
@@ -279,6 +314,9 @@ export function mountGPU(host, { calm = false } = {}) {
   // ombre portée douce
   const shadow = new THREE.Mesh(new THREE.PlaneGeometry(46, 24), new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false }));
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = -4.6; scene.add(shadow);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 50), new THREE.ShadowMaterial({ opacity: .45 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = -4.55; ground.receiveShadow = true; scene.add(ground);
+  card.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
 
   // ----- flux d'air : particules aspirées par les ventilateurs, poussées à travers les ailettes -----
   const NP = calm ? 0 : 1100, pos = new Float32Array(NP * 3), col = new Float32Array(NP * 3), life = new Float32Array(NP), seed = new Float32Array(NP * 4);
