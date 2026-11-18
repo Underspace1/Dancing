@@ -8,7 +8,7 @@ const smooth = t => t * t * (3 - 2 * t);
 fetch('https://api.github.com/repos/Underspace1/Dancing/releases/latest').then(r => r.ok ? r.json() : null).then(rel => {
   const exe = rel?.assets?.find(a => /setup.*\.exe$/i.test(a.name)); if (!exe) return;
   document.querySelectorAll('[data-dl]').forEach(a => { a.href = exe.browser_download_url; });
-  document.querySelectorAll('[data-ver]').forEach(s => { s.textContent = `${rel.tag_name} · ${Math.round(exe.size / 1048576)} Mo`; });
+  document.querySelectorAll('[data-ver]').forEach(s => { s.textContent = `${rel.tag_name} · ${Math.round(exe.size / 1048576)} Mo`; s.hidden = false; });
 }).catch(() => {});
 
 // Apparitions discrètes (ajoutées seulement si le script tourne : sans lui, tout reste visible)
@@ -46,17 +46,36 @@ function anatomy() {
   if (tc) { const f = Math.round(6252 + p * 900); tc.textContent = `00:${String(Math.floor(f / 3600)).padStart(2, '0')}:${String(Math.floor(f / 60) % 60).padStart(2, '0')}:${String(f % 60).padStart(2, '0')}`; }
 }
 
-// Cartes empilées : une carte recouverte recule et s'assombrit.
-const cards = [...document.querySelectorAll('.card')];
-function deck() {
-  for (let i = 0; i < cards.length - 1; i++) {
-    const a = cards[i].getBoundingClientRect(), b = cards[i + 1].getBoundingClientRect();
-    cards[i].style.setProperty('--d', clamp(1 - (b.top - a.top) / Math.max(1, a.height)).toFixed(3));
-  }
+// Classeur : chaque dossier arrive du bas et tombe sur la pile ; ceux du dessous reculent, leurs onglets restent lisibles.
+const files = document.getElementById('fonctions'), folders = [...document.querySelectorAll('.folder')];
+const filesRun = () => files.offsetHeight - innerHeight;
+function pile() {
+  const n = folders.length, r = files.getBoundingClientRect();
+  // chaque dossier arrive pendant les 60 % de son tronçon, puis reste posé et lisible
+  const raw = clamp(-r.top / Math.max(1, filesRun())) * (n - 1), seg = Math.min(n - 2, Math.floor(raw));
+  const cur = raw >= n - 1 ? n - 1 : seg + smooth(clamp((raw - seg) / 0.6));
+  const narrow = innerWidth <= 900;
+  folders.forEach((f, i) => {
+    const d = cur - i;
+    let ty = 0, tz = 0, rx = 0, dim = 0, show = 1;
+    if (d < 0) { const e = clamp(d + 1); ty = (1 - e) * innerHeight * .9; rx = -(1 - e) * 22; }
+    else { const k = Math.min(d, 4); ty = -k * (narrow ? 14 : 22); tz = -k * 60; rx = k * 2; dim = Math.min(k, 3) * .14; show = 1 - clamp(d * 1.6); }
+    f.style.transform = `translate3d(0, ${ty.toFixed(1)}px, ${tz.toFixed(1)}px) rotateX(${rx.toFixed(2)}deg)`;
+    f.style.filter = dim ? `brightness(${(1 - dim).toFixed(3)})` : '';
+    f.style.visibility = d < -1 ? 'hidden' : '';
+    f.style.zIndex = i;
+    f.querySelectorAll('.folder-body > *').forEach(el => { el.style.opacity = show.toFixed(3); });
+    f.classList.toggle('on', Math.round(Math.max(0, cur)) === i);
+  });
 }
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
+  const n = folders.length, i = +b.dataset.go;
+  if (calm) return b.closest('.folder').scrollIntoView();
+  scrollTo({ top: files.offsetTop + ((i ? i - 0.3 : 0) / (n - 1)) * filesRun() + 1, behavior: 'smooth' });
+}));
 
 let ticking = false;
-const frame = () => { ticking = false; anatomy(); if (!calm) deck(); };
+const frame = () => { ticking = false; anatomy(); if (!calm) pile(); };
 const ask = () => { if (!ticking) { ticking = true; requestAnimationFrame(frame); } };
 addEventListener('scroll', ask, { passive: true });
 addEventListener('resize', ask);

@@ -34,9 +34,7 @@
   <main id="contenu">
     <!-- Ouverture -->
     <section class="hero">
-      <div class="hero-meta mono">
-        <span>Logiciel Windows</span><span>Gratuit</span><span data-ver>Dernière version</span>
-      </div>
+      <p class="pill"><span class="pill-dot" aria-hidden="true"></span>Gratuit pour Windows 10 et 11<span class="pill-ver" data-ver hidden></span></p>
       <h1 class="hero-title">Tes replays osu!, montés comme une vidéo de tournoi.</h1>
       <div class="hero-foot">
         <p class="lead">Glisse un .osr, choisis ton overlay, exporte. Dancing! rejoue la partie avec danser, dessine l’overlay image par image et sort une vidéo prête à poster.</p>
@@ -89,33 +87,50 @@
       </figure>
     </section>
 
-    <!-- Fonctions : cartes qui s'empilent -->
-    <section class="cards" id="fonctions">
-      <div class="section-head">
-        <p class="mono label">Fonctions</p>
-        <h2 class="title">Tout ce qu’il faut pour une vidéo propre.</h2>
-      </div>
-      <div class="deck">
-        <article class="card" style="--k:0">
-          <div class="card-copy"><span class="mono">A · Overlay</span><h3>Un overlay de tournoi, à ton style.</h3><p>Bandeau de vie, combo et pp qui défilent, barre d’erreur, classement trié par pp. Dix presets, couleurs et disposition réglables à la souris.</p></div>
-          <img src="assets/overlay.jpg" width="1600" height="900" loading="lazy" alt="Un replay rendu avec l’overlay Dancing! : bandeau de vie, classement, combo et pp">
+    <!-- Fonctions : classeur de dossiers qui s'entassent au défilement -->
+    <section class="files" id="fonctions" style="--n:5">
+      <div class="files-pin">
+        <div class="section-head">
+          <p class="mono label">Fonctions</p>
+          <h2 class="title">Tout ce qu’il faut pour une vidéo propre.</h2>
+        </div>
+        <div class="pile" id="pile">
+        <article class="folder" style="--i:0">
+          <button class="tab" type="button" data-go="0"><span class="mono">A</span>Overlay</button>
+          <div class="folder-body">
+            <div class="folder-copy"><h3>Un overlay de tournoi, à ton style.</h3><p>Bandeau de vie, combo et pp qui défilent, barre d’erreur, classement trié par pp. Dix presets, couleurs et disposition réglables à la souris.</p></div>
+            <img src="assets/overlay.jpg" width="1600" height="900" loading="lazy" alt="Un replay rendu avec l’overlay Dancing! : bandeau de vie, classement, combo et pp">
+          </div>
         </article>
-        <article class="card" style="--k:1">
-          <div class="card-copy"><span class="mono">B · osu!mania</span><h3>Le mania, avec son propre moteur.</h3><p>danser ne le gère pas : Dancing! a son propre moteur. Notes longues, jugements, musique, et trois overlays rien que pour lui.</p></div>
-          <img src="assets/mania-colonne.jpg" width="1600" height="900" loading="lazy" alt="Replay osu!mania avec l’overlay Colonne">
+        <article class="folder" style="--i:1">
+          <button class="tab" type="button" data-go="1"><span class="mono">B</span>osu!mania</button>
+          <div class="folder-body">
+            <div class="folder-copy"><h3>Le mania, avec son propre moteur.</h3><p>danser ne le gère pas : Dancing! a son propre moteur. Notes longues, jugements, musique, et trois overlays rien que pour lui.</p></div>
+            <img src="assets/mania-colonne.jpg" width="1600" height="900" loading="lazy" alt="Replay osu!mania avec l’overlay Colonne">
+          </div>
         </article>
-        <article class="card" style="--k:2">
-          <div class="card-copy"><span class="mono">C · Widgets</span><h3>Des widgets en verre, ou les tiens.</h3><p>Neuf widgets où le jeu derrière est vraiment flouté, tout le catalogue tosu, et un créateur sans code : 26 données, polices, couleurs, animations.</p></div>
-          <img src="assets/store.jpg" width="1480" height="920" loading="lazy" alt="La bibliothèque de widgets de Dancing!">
+        <article class="folder" style="--i:2">
+          <button class="tab" type="button" data-go="2"><span class="mono">C</span>Widgets</button>
+          <div class="folder-body">
+            <div class="folder-copy"><h3>Des widgets en verre, ou les tiens.</h3><p>Neuf widgets où le jeu derrière est vraiment flouté, tout le catalogue tosu, et un créateur sans code : 26 données, polices, couleurs, animations.</p></div>
+            <img src="assets/store.jpg" width="1480" height="920" loading="lazy" alt="La bibliothèque de widgets de Dancing!">
+          </div>
         </article>
-        <article class="card" style="--k:3">
-          <div class="card-copy"><span class="mono">D · Scènes</span><h3>Une intro, une vraie fin.</h3><p>Carte de la map avant la partie. Après, l’écran Loupe (ta note dans un cercle en verre, le classement de la map) ou Classique. La musique de la map joue dessous.</p></div>
-          <img src="assets/fin-loupe.jpg" width="1600" height="900" loading="lazy" alt="L’écran de fin Loupe : la note dans un cercle en verre et le classement de la map">
+        <article class="folder" style="--i:3">
+          <button class="tab" type="button" data-go="3"><span class="mono">D</span>Scènes</button>
+          <div class="folder-body">
+            <div class="folder-copy"><h3>Une intro, une vraie fin.</h3><p>Carte de la map avant la partie. Après, l’écran Loupe (ta note dans un cercle en verre, le classement de la map) ou Classique. La musique de la map joue dessous.</p></div>
+            <img src="assets/fin-loupe.jpg" width="1600" height="900" loading="lazy" alt="L’écran de fin Loupe : la note dans un cercle en verre et le classement de la map">
+          </div>
         </article>
-        <article class="card" style="--k:4">
-          <div class="card-copy"><span class="mono">E · Installation</span><h3>Un fichier. Rien d’autre à installer.</h3><p>danser, tosu, ffmpeg et le moteur des widgets sont inclus. Les nouvelles versions sont proposées au démarrage et s’installent en un clic, réglages gardés.</p></div>
-          <img src="assets/installateur.jpg" width="1640" height="1040" loading="lazy" alt="L’installateur de Dancing!">
+        <article class="folder" style="--i:4">
+          <button class="tab" type="button" data-go="4"><span class="mono">E</span>Installation</button>
+          <div class="folder-body">
+            <div class="folder-copy"><h3>Un fichier. Rien d’autre à installer.</h3><p>danser, tosu, ffmpeg et le moteur des widgets sont inclus. Les nouvelles versions sont proposées au démarrage et s’installent en un clic, réglages gardés.</p></div>
+            <img src="assets/installateur.jpg" width="1640" height="1040" loading="lazy" alt="L’installateur de Dancing!">
+          </div>
         </article>
+        </div>
       </div>
     </section>
 
