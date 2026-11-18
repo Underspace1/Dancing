@@ -79,47 +79,52 @@ document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', 
   scrollTo({ top: files.offsetTop + ((i ? i - 0.3 : 0) / (n - 1)) * filesRun() + 1, behavior: 'smooth' });
 }));
 
-// Moniteur de rendu (simulation) : valeurs illustratives qui suivent le chapitre affiché ; la ligne de la pièce montrée s'allume.
-const tm = (() => {
-  const el = id => document.getElementById(id), rows = Object.fromEntries([...document.querySelectorAll('.tm-row')].map(r => [r.dataset.k, r]));
-  if (!el('tmFrame')) return null;
-  const fr = n => Math.round(n).toLocaleString('fr-FR'), f1 = n => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  //            chapitres :  carte, éclatée, puce, mémoire, encodeur, refroid., PCIe
-  const T = { gpu: [34, 58, 97, 93, 88, 90, 86], vram: [2.1, 3.4, 5.2, 7.6, 7.4, 7.4, 7.3], enc: [0, 8, 22, 26, 64, 61, 58],
-    fan: [920, 1150, 1480, 1560, 1680, 2120, 1880], temp: [41, 47, 63, 65, 66, 62, 64], pcie: [.3, 1.1, 3.4, 3.9, 5.2, 6, 11.9], fps: [0, 0, 212, 209, 204, 207, 205] };
-  const LOG = ['danser › chargement de la map, du skin et du replay', 'danser › enregistrement 1920 × 1080 · 60 i/s',
-    'cœurs › cercles, sliders, curseur, fond · flou ×8 : 8 sous-images par image', 'mémoire › textures du skin + 8 sous-images du flou gardées sur la carte',
-    'encodeur › H.264 (NVENC) · 48 Mb/s · les cœurs restent libres', 'ventilateur › 2 120 tr/min · l’air traverse les ailettes puis la carte',
-    'PCIe › images vers le processeur · overlay et ffmpeg en 4 tranches parallèles'];
-  const KEY = [null, null, 'die', 'vram', 'enc', 'fans', 'pcie'];
-  const v = { gpu: 0, vram: 0, enc: 0, fan: 0, temp: 40, pcie: 0, fps: 0 }, hist = { gpu: [], fan: [] };
-  let chap = 0, frame = 0, timer = 0, last = performance.now();
-  const spark = (c, data, max) => {
-    const g = c.getContext('2d'), w = c.width, h = c.height; g.clearRect(0, 0, w, h);
-    g.beginPath(); data.forEach((y, i) => g[i ? 'lineTo' : 'moveTo'](i / 59 * w, h - 3 - y / max * (h - 6)));
-    g.strokeStyle = '#7aa7ff'; g.lineWidth = 2; g.stroke();
-    g.lineTo(w * (data.length - 1) / 59, h); g.lineTo(0, h); g.closePath();
-    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(122,167,255,.35)'); gr.addColorStop(1, 'rgba(122,167,255,0)'); g.fillStyle = gr; g.fill();
-  };
+// Fenêtre du logiciel pendant un rendu (exemple) : le journal s'écrit au fil des chapitres, la progression suit.
+// Classes des lignes : p = commande, d = danser, o = overlay, f = ffmpeg, ok = terminé.
+const aw = (() => {
+  const box = document.getElementById('awLines'); if (!box) return null;
+  const pct = document.getElementById('awPct'), eta = document.getElementById('awEta'), bar = document.getElementById('awBar'), state = document.getElementById('awState');
+  const steps = [...document.querySelectorAll('.aw-steps li')], now = document.getElementById('awNow');
+  const LOG = [
+    [['p', '> danser -settings=replay-hud-v2 -replay="xi - over the top.osr" -record -quickstart'], ['d', 'danser › base de maps : 4 812 maps chargées'], ['d', 'danser › replay : BTMCfanboy · HD DT · 98,42 %']],
+    [['d', 'danser › enregistrement 1920 × 1080 · 60 i/s · flou ×8'], ['d', 'danser › export HUD activé (données de l’overlay)']],
+    [['d', 'danser › cœurs : cercles, sliders, curseur, fond de la map'], ['d', 'danser › flou de mouvement : 8 sous-images par image']],
+    [['d', 'danser › mémoire vidéo : textures du skin et de la map chargées'], ['d', 'danser › sous-images du flou fusionnées sur la carte']],
+    [['f', 'ffmpeg › encodeur h264_nvenc · CQ 12 · preset p1'], ['f', 'ffmpeg › frame= 5120  fps=212  bitrate=48,2 Mb/s']],
+    [['d', 'danser › 9 600 images enregistrées'], ['ok', 'danser › rendu du jeu terminé']],
+    [['o', 'overlay › rendu en 6 tranches, 4 en parallèle'], ['o', 'overlay › tranches 6/6 terminées'], ['f', 'ffmpeg › recollage sans réencodage + mixage audio'], ['ok', '✓ vidéo prête : videos/BTMCfanboy - over the top.mp4']],
+  ];
+  // progression globale visée à la fin de chaque chapitre, et étape du pipeline
+  const GOAL = [2, 6, 32, 55, 74, 88, 100], STEP = [0, 0, 0, 0, 0, 0, 1];
+  let chap = -1, queue = [], prog = 0, live = null, timer = 0, typing = 0, last = 0;
+  const add = ([c, t], anim = true) => { const d = document.createElement('div'); d.className = c; d.textContent = t; if (!anim) d.style.animation = 'none'; box.insertBefore(d, live); while (box.children.length > 9) box.firstChild.remove(); };
+  const liveLine = () => { if (!live) { live = document.createElement('div'); live.className = 'cur'; box.appendChild(live); } return live; };
   const tick = () => {
-    const now = performance.now(), dt = Math.min(.5, (now - last) / 1000); last = now;
-    for (const k of Object.keys(v)) { const target = T[k][chap] * (k === 'fps' || k === 'vram' || k === 'temp' ? 1 : 1 + (Math.random() - .5) * .06); v[k] += (target - v[k]) * Math.min(1, dt * 3); }
-    frame += v.fps * dt;
-    for (const [k, max] of [['gpu', 100], ['fan', 2400]]) { hist[k].push(Math.min(max, v[k])); if (hist[k].length > 60) hist[k].shift(); }
-    el('tmFrame').textContent = fr(frame) + ' / 9 600'; el('tmFps').textContent = fr(v.fps);
-    el('tmGpu').textContent = fr(Math.min(100, v.gpu)) + ' %'; spark(el('tmGpuSpark'), hist.gpu, 100);
-    el('tmVram').textContent = f1(v.vram) + ' Go'; el('tmVramBar').style.width = (v.vram / 16 * 100).toFixed(1) + '%';
-    el('tmEnc').textContent = fr(Math.min(100, v.enc)) + ' %'; el('tmEncBar').style.width = Math.min(100, v.enc).toFixed(1) + '%';
-    el('tmFan').textContent = fr(v.fan) + ' tr/min'; el('tmTemp').textContent = 'puce ' + fr(v.temp) + ' °C'; spark(el('tmFanSpark'), hist.fan, 2400);
-    el('tmPcie').textContent = f1(v.pcie) + ' Go/s'; el('tmPcieBar').style.width = (v.pcie / 16 * 100).toFixed(1) + '%';
+    if (queue.length && !(typing++ % 4)) add(queue.shift());
+    const t = performance.now(), dt = last ? Math.min(1, (t - last) / 1000) : .09; last = t;
+    const goal = GOAL[chap] ?? 0; prog += (goal - prog) * (1 - Math.exp(-dt * 1.2)); if (Math.abs(goal - prog) < .05) prog = goal;
+    const p = Math.min(100, prog);
+    pct.textContent = Math.floor(p) + ' %'; bar.style.width = p.toFixed(1) + '%';
+    const secs = Math.round((100 - p) * .62); eta.textContent = p >= 100 ? 'terminé en 1 min 02' : chap < 2 ? 'préparation…' : `reste ${Math.floor(secs / 60)} min ${String(secs % 60).padStart(2, '0')}`;
+    const l = liveLine();
+    if (p >= 100) { l.className = 'ok cur'; l.textContent = ''; }
+    else if (chap >= 6) { const k = clamp((p - 88) / 12); l.className = 'o cur'; l.textContent = `overlay › tranches ${Math.min(6, 1 + Math.floor(k * 6))}/6 · ${Math.floor(k * 100)} %`; }
+    else if (chap >= 2) { const dp = Math.min(100, Math.round(p / 88 * 100)); l.className = 'd cur'; l.textContent = `danser › Progress: ${dp}%, ETA: 00:${String(Math.round((100 - dp) * .5)).padStart(2, '0')}`; }
+    else { l.className = 'p cur'; l.textContent = ''; }
+    if (now) now.textContent = l.textContent || (box.lastChild?.previousSibling?.textContent ?? '');
+    const st = p >= 100 ? 3 : STEP[chap] ?? 0;
+    steps.forEach((li, i) => { li.classList.toggle('ok', i < st); li.classList.toggle('on', i === st); });
+    state.textContent = p >= 100 ? 'Terminé' : chap < 2 ? 'Préparation' : 'Rendu en cours'; state.classList.toggle('done', p >= 100);
   };
   return {
     chapter(c) {
-      if (c === chap && timer) return; chap = c;
-      for (const [k, r] of Object.entries(rows)) r.classList.toggle('on', KEY[c] === k);
-      el('tmLog').textContent = LOG[c];
+      if (c === chap) return;
+      if (c < chap) {               // retour en arrière : journal reconstruit d'un coup
+        box.textContent = ''; live = null; queue = []; LOG.slice(0, c + 1).flat().forEach(l => add(l, false)); prog = Math.min(prog, GOAL[c]);
+      } else LOG.slice(chap + 1, c + 1).forEach(lines => queue.push(...lines));
+      chap = c;
     },
-    run(on) { if (on && !timer) { last = performance.now(); timer = setInterval(tick, 100); tick(); } else if (!on && timer) { clearInterval(timer); timer = 0; } },
+    run(on) { if (on && !timer) { last = 0; timer = setInterval(tick, 90); } else if (!on && timer) { clearInterval(timer); timer = 0; } },
   };
 })();
 
@@ -134,8 +139,8 @@ function gpu() {
   if (!gpuSec) return;
   const p = gpuProgress();
   let c = 0; while (c < gchap.length - 1 && p >= CHAP[c + 1]) c++;
-  if (c !== lastChap) { lastChap = c; gchap.forEach((li, i) => li.classList.toggle('on', i === c)); gpuSec.classList.toggle('deep', c >= 2); tm?.chapter(c); }
-  { const r = gpuSec.getBoundingClientRect(); tm?.run(!calm && r.bottom > 0 && r.top < innerHeight); }
+  if (c !== lastChap) { lastChap = c; gchap.forEach((li, i) => li.classList.toggle('on', i === c)); gpuSec.classList.toggle('deep', c >= 2); aw?.chapter(c); }
+  { const r = gpuSec.getBoundingClientRect(); aw?.run(!calm && r.bottom > 0 && r.top < innerHeight); }
   gbars.forEach((b, i) => b.style.setProperty('--f', clamp((p - CHAP[i]) / (CHAP[i + 1] - CHAP[i])).toFixed(3)));
   if (gpu3d) { gpu3d.progress = p; const r = gpuSec.getBoundingClientRect(); gpu3d.setVisible(r.bottom > 0 && r.top < innerHeight); }
 }
